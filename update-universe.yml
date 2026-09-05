@@ -1,0 +1,25 @@
+name: Update Scan Universe (S&P500 + Nasdaq-100)
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # כל יום שני ב-06:00 UTC - רשימת המדדים כמעט לא משתנה, פעם בשבוע מספיק
+  workflow_dispatch: {}
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: עדכון אוניברסת הסריקה
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run update-universe

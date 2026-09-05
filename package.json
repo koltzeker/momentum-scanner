@@ -1,0 +1,19 @@
+{
+  "name": "momentum-scanner",
+  "version": "1.0.0",
+  "description": "מערכת איתור נקודות כניסה במומנטום יומי - סורקת אוניברסת מניות (S&P500+Nasdaq100) ורשימת מעקב לפי מתודולוגיית Wave A/B, ומציגה תוצאות בפרונט-אנד עברי.",
+  "private": true,
+  "main": "scanner/run.js",
+  "scripts": {
+    "scan": "node scanner/run.js",
+    "update-universe": "node scanner/updateUniverse.js",
+    "test": "node scanner/waveDetector.test.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "pg": "^8.13.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
