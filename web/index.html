@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>מומנטום יומי | מערכת איתור כניסות</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  :root {
+    --bg:#0a0d12; --panel:#12161d; --panel2:#1a2029; --border:#232a36;
+    --text:#e6e9ef; --muted:#7b869a;
+    --green:#00e5a0; --red:#ff3d5a; --blue:#38b6ff; --yellow:#ffc940;
+    --mono:'IBM Plex Mono',monospace;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+Hebrew:wght@300;400;600;700&display=swap');
+  * { box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'Noto Sans Hebrew',Arial,sans-serif; margin:0; padding:20px 24px 60px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .subtitle { color:var(--muted); font-size:13px; margin-bottom:20px; }
+  .header-row { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:6px; }
+  .actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  button { background:var(--blue); color:#00121f; border:none; border-radius:7px; padding:9px 16px; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; }
+  button:hover { filter:brightness(1.1); }
+  button:disabled { opacity:.5; cursor:wait; }
+  button.secondary { background:var(--panel2); color:var(--text); border:1px solid var(--border); }
+  button.danger-ghost { background:none; border:none; color:var(--red); font-size:14px; padding:2px 6px; }
+  .status { color:var(--muted); font-size:12px; font-family:var(--mono); }
+
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:22px; }
+  .panel h2 { font-size:15px; margin:0 0 4px; display:flex; align-items:center; gap:8px; }
+  .panel .hint { color:var(--muted); font-size:12px; margin-bottom:14px; }
+
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { padding:9px 10px; text-align:center; border-bottom:1px solid var(--border); white-space:nowrap; }
+  th { color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.3px; }
+  tr:hover td { background:var(--panel2); }
+  td.sym { font-weight:700; text-align:right; font-family:var(--mono); }
+  .num { font-family:var(--mono); }
+  .entry-val { color:var(--green); font-weight:700; }
+  .stop-val { color:var(--red); font-weight:700; }
+  .target-val { color:var(--blue); font-weight:700; }
+  .empty-state { color:var(--muted); font-size:13px; padding:20px; text-align:center; }
+  .table-wrap { overflow-x:auto; }
+
+  .watch-input-row { display:flex; gap:8px; margin-bottom:14px; }
+  .watch-input-row input { flex:1; max-width:220px; background:var(--panel2); border:1px solid var(--border); color:var(--text); border-radius:7px; padding:9px 12px; font-size:13px; font-family:var(--mono); text-transform:uppercase; }
+  .watch-input-row input:focus { outline:none; border-color:var(--blue); }
+
+  .earnings-soon { background:rgba(0,229,160,.15); color:var(--green); font-weight:700; border-radius:6px; padding:2px 6px; }
+  .earnings-stale { background:rgba(255,61,90,.12); color:var(--red); font-weight:700; border-radius:6px; padding:2px 6px; }
+  .no-scenario { color:var(--muted); font-style:italic; }
+  .scenario-valid { color:var(--green); font-weight:700; }
+
+  .cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:12px; }
+  .card { background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:14px; }
+  .card-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .card-sym { font-family:var(--mono); font-weight:700; font-size:15px; }
+  .card-price { font-family:var(--mono); font-weight:700; }
+  .card-row { display:flex; justify-content:space-between; font-size:12px; padding:3px 0; color:var(--muted); }
+  .card-row b { color:var(--text); font-family:var(--mono); }
+  .card-scenario { margin-top:8px; padding-top:8px; border-top:1px solid var(--border); font-size:12px; }
+</style>
+</head>
+<body>
+
+<div class="header-row">
+  <div>
+    <h1>🎯 מומנטום יומי</h1>
+    <div class="subtitle" id="scanMeta">טוען...</div>
+  </div>
+  <div class="actions">
+    <span class="status" id="statusMsg"></span>
+    <button class="secondary" onclick="loadData()">רענון תצוגה</button>
+    <button onclick="triggerFullScan()" id="fullScanBtn">🔄 סרוק הכל עכשיו</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>📈 מועמדים היום</h2>
+  <div class="hint">תוצאות הסריקה הרחבה (S&amp;P 500 + Nasdaq-100) - תרחישי Wave A/B תקפים בלבד, לפי המתודולוגיה של RKY MON ברמה יומית.</div>
+  <div class="table-wrap" id="candidatesTableWrap">
+    <div class="empty-state">טוען...</div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>👁 רשימת מעקב</h2>
+  <div class="hint">מניות שאתה עוקב אחריהן באופן קבוע - כולל נתונים פונדמנטליים (בסגנון הייפ) יחד עם התרחיש הטכני היומי.</div>
+  <div class="watch-input-row">
+    <input type="text" id="newSymbolInput" placeholder="הוסף טיקר (למשל NUVB)" onkeydown="if(event.key==='Enter')addToWatchlist()">
+    <button onclick="addToWatchlist()">הוסף</button>
+  </div>
+  <div class="cards" id="watchlistCards">
+    <div class="empty-state">טוען...</div>
+  </div>
+</div>
+
+<script>
+const API = ''; // אותו דומיין - אם ה-API רץ בנפרד יש למלא כתובת בסיס כאן
+
+function fmt(n, digits) {
+  if (n === null || n === undefined || Number.isNaN(n)) return '—';
+  return Number(n).toFixed(digits ?? 2);
+}
+
+function daysAgoLabel(scanDate) {
+  if (!scanDate) return '';
+  const d = new Date(scanDate);
+  const today = new Date();
+  const diffDays = Math.round((today - d) / 86400000);
+  if (diffDays <= 0) return 'היום';
+  if (diffDays === 1) return 'אתמול';
+  return `לפני ${diffDays} ימים`;
+}
+
+async function loadData() {
+  setStatus('טוען נתונים...');
+  try {
+    const resp = await fetch(`${API}/api/data`);
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    renderMeta(data);
+    renderCandidates(data.candidates);
+    renderWatchlist(data.watchlist);
+    setStatus('עודכן ' + new Date().toLocaleTimeString('he-IL'));
+  } catch (e) {
+    setStatus('שגיאה: ' + e.message);
+  }
+}
+
+function setStatus(msg) {
+  document.getElementById('statusMsg').textContent = msg;
+}
+
+function renderMeta(data) {
+  const el = document.getElementById('scanMeta');
+  if (!data.scanDate) {
+    el.textContent = 'עדיין לא בוצעה סריקה - לחץ "סרוק הכל עכשיו" כדי להתחיל';
+    return;
+  }
+  el.textContent = `סריקה אחרונה: ${data.scanDate} (${daysAgoLabel(data.scanDate)}) · ${data.candidates.length} תרחישים תקפים`;
+}
+
+function renderCandidates(rows) {
+  const wrap = document.getElementById('candidatesTableWrap');
+  if (!rows || !rows.length) {
+    wrap.innerHTML = '<div class="empty-state">אין תרחישים תקפים בסריקה האחרונה</div>';
+    return;
+  }
+  let html = `<table><thead><tr>
+    <th>טיקר</th><th>שם</th><th>מחיר</th><th>כניסה</th><th>סטופ</th><th>יעד (+15%)</th>
+    <th>הוספה</th><th>VWAP מעוגן</th><th>שיא Wave A</th><th>לפני כמה ימים</th>
+  </tr></thead><tbody>`;
+  for (const r of rows) {
+    html += `<tr>
+      <td class="sym">${r.symbol}</td>
+      <td>${r.name || ''}</td>
+      <td class="num">$${fmt(r.current_close)}</td>
+      <td class="num entry-val">$${fmt(r.entry)}</td>
+      <td class="num stop-val">$${fmt(r.stop)}</td>
+      <td class="num target-val">$${fmt(r.target)}</td>
+      <td class="num">$${fmt(r.add_level)}</td>
+      <td class="num">$${fmt(r.anchored_vwap)}</td>
+      <td class="num">$${fmt(r.wave_a_high)}</td>
+      <td class="num">${r.wave_a_high_days_ago ?? '—'}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function earningsClass(dateStr) {
+  if (!dateStr) return '';
+  // הייפ: אדום אם עבר יותר משבוע, ירוק אם בשבועיים הקרובים
+  const parsed = Date.parse(dateStr);
+  if (Number.isNaN(parsed)) return '';
+  const diffDays = (parsed - Date.now()) / 86400000;
+  if (diffDays < -7) return 'earnings-stale';
+  if (diffDays >= 0 && diffDays <= 14) return 'earnings-soon';
+  return '';
+}
+
+function renderWatchlist(rows) {
+  const wrap = document.getElementById('watchlistCards');
+  if (!rows || !rows.length) {
+    wrap.innerHTML = '<div class="empty-state">רשימת המעקב ריקה - הוסף טיקר למעלה</div>';
+    return;
+  }
+  wrap.innerHTML = rows.map((r) => {
+    const f = r.fundamentals || {};
+    const chg = r.current_close && f.price ? '' : '';
+    const scenarioHtml = r.momentum_valid
+      ? `<div class="scenario-valid">✅ תרחיש תקף: כניסה $${fmt(r.entry)} · סטופ $${fmt(r.stop)} · יעד $${fmt(r.target)}</div>`
+      : `<div class="no-scenario">אין תרחיש כרגע</div>`;
+    const earnCls = earningsClass(f.earningsDate);
+    return `<div class="card">
+      <div class="card-top">
+        <span class="card-sym">${r.symbol}</span>
+        <span class="card-price">${f.price ? '$' + fmt(f.price) : (r.current_close ? '$' + fmt(r.current_close) : '—')}</span>
+        <button class="danger-ghost" onclick="removeFromWatchlist('${r.symbol}')" title="הסר">✕</button>
+      </div>
+      <div class="card-row"><span>P/E</span><b>${fmt(f.peTTM, 1)}</b></div>
+      <div class="card-row"><span>מחיר הוגן (אנליסטים)</span><b>${f.fairValueAnalyst ? '$'+fmt(f.fairValueAnalyst) : '—'}</b></div>
+      <div class="card-row"><span>מחיר הוגן (עצמי)</span><b>${f.fairValueSelf ? '$'+fmt(f.fairValueSelf) : '—'}</b></div>
+      <div class="card-row"><span>תאריך דוח</span><b class="${earnCls}">${f.earningsDate || '—'}</b></div>
+      <div class="card-row"><span>ניקוד</span><b>${fmt(f.score, 0)}</b></div>
+      <div class="card-scenario">${scenarioHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+async function addToWatchlist() {
+  const input = document.getElementById('newSymbolInput');
+  const symbol = input.value.trim().toUpperCase();
+  if (!symbol) return;
+  setStatus('מוסיף ' + symbol + '...');
+  try {
+    const resp = await fetch(`${API}/api/watchlist`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ symbol })
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    input.value = '';
+    await loadData();
+    // רענון מיידי של המניה החדשה כדי שיהיו לה נתונים בלי לחכות להרצה היומית
+    refreshSymbol(symbol);
+  } catch (e) {
+    setStatus('שגיאה בהוספה: ' + e.message);
+  }
+}
+
+async function removeFromWatchlist(symbol) {
+  setStatus('מסיר ' + symbol + '...');
+  try {
+    await fetch(`${API}/api/watchlist?symbol=${encodeURIComponent(symbol)}`, { method: 'DELETE' });
+    await loadData();
+  } catch (e) {
+    setStatus('שגיאה בהסרה: ' + e.message);
+  }
+}
+
+async function refreshSymbol(symbol) {
+  setStatus('מרענן ' + symbol + '...');
+  try {
+    const resp = await fetch(`${API}/api/refresh-symbol`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ symbol })
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    await loadData();
+  } catch (e) {
+    setStatus('שגיאה ברענון: ' + e.message);
+  }
+}
+
+async function triggerFullScan() {
+  const btn = document.getElementById('fullScanBtn');
+  btn.disabled = true;
+  setStatus('מפעיל סריקה מלאה ב-GitHub Actions...');
+  try {
+    const resp = await fetch(`${API}/api/trigger-full-scan`, { method: 'POST' });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    setStatus(data.message || 'הסריקה הופעלה');
+  } catch (e) {
+    setStatus('שגיאה: ' + e.message);
+  } finally {
+    setTimeout(() => { btn.disabled = false; }, 5000);
+  }
+}
+
+loadData();
+</script>
+</body>
+</html>
