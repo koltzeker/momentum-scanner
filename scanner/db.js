@@ -23,16 +23,26 @@ function getPool() {
 }
 
 async function upsertTickers(tickers) {
+  if (!tickers.length) return;
   const p = getPool();
   const client = await p.connect();
   try {
     await client.query('begin');
-    for (const t of tickers) {
+    const chunkSize = 200; // כמה שורות בכל INSERT מרובה-שורות (נמנעים מאות round-trips נפרדים)
+    for (let i = 0; i < tickers.length; i += chunkSize) {
+      const chunk = tickers.slice(i, i + chunkSize);
+      const values = [];
+      const params = [];
+      chunk.forEach((t, idx) => {
+        const base = idx * 3;
+        values.push(`($${base + 1},$${base + 2},$${base + 3},true,now())`);
+        params.push(t.symbol, t.name, t.indices);
+      });
       await client.query(
         `insert into tickers (symbol, name, indices, active, updated_at)
-         values ($1, $2, $3, true, now())
-         on conflict (symbol) do update set name=$2, indices=$3, active=true, updated_at=now()`,
-        [t.symbol, t.name, t.indices]
+         values ${values.join(',')}
+         on conflict (symbol) do update set name=excluded.name, indices=excluded.indices, active=true, updated_at=now()`,
+        params
       );
     }
     await client.query('commit');
@@ -81,12 +91,24 @@ async function saveDailyBars(symbol, bars) {
   const client = await p.connect();
   try {
     await client.query('begin');
-    for (const b of bars) {
+    // חשוב לביצועים: INSERT מרובה-שורות במקום שאילתה נפרדת לכל נר. עם ~250 נרות לכל
+    // טיקר ו-500+ טיקרים בסריקה, שאילתה בודדת לכל נר (round-trip נפרד לרשת) הפכה את
+    // הסריקה לאיטית מדי (חורגת בהרבה מהזמן המשוער ומזמן ה-timeout של ה-Action).
+    const chunkSize = 200;
+    for (let i = 0; i < bars.length; i += chunkSize) {
+      const chunk = bars.slice(i, i + chunkSize);
+      const values = [];
+      const params = [];
+      chunk.forEach((b, idx) => {
+        const base = idx * 6;
+        values.push(`($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6})`);
+        params.push(symbol, b.date, b.high, b.low, b.close, b.volume);
+      });
       await client.query(
         `insert into daily_bars (symbol, bar_date, high, low, close, volume)
-         values ($1,$2,$3,$4,$5,$6)
-         on conflict (symbol, bar_date) do update set high=$3, low=$4, close=$5, volume=$6`,
-        [symbol, b.date, b.high, b.low, b.close, b.volume]
+         values ${values.join(',')}
+         on conflict (symbol, bar_date) do update set high=excluded.high, low=excluded.low, close=excluded.close, volume=excluded.volume`,
+        params
       );
     }
     await client.query('commit');
