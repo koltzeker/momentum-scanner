@@ -2,8 +2,11 @@ name: Daily Momentum Scan
 
 on:
   schedule:
-    - cron: '30 21 * * 2-6'
-  workflow_dispatch: {}
+    # 23:30 שעון ישראל (IST/IDT) = 20:30 UTC בחורף, 20:30 UTC גם בקירוב בקיץ (הפרש UTC+2/+3) -
+    # מוגדר ב-UTC כי GitHub Actions לא תומך באזורי זמן ב-cron. השעה הזו היא אחרי סגירת שוק
+    # ארה"ב (16:00 ET = 20:00-21:00 UTC תלוי בשעון קיץ), עם מרווח ביטחון.
+    - cron: '30 21 * * 2-6' # שלישי-שבת ב-UTC = ראשון-חמישי בישראל אחרי סגירת ארה"ב
+  workflow_dispatch: {} # מאפשר הרצה ידנית מה-GitHub UI/API (כפתור "רענן עכשיו")
 
 jobs:
   scan:
@@ -15,11 +18,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
-      - run: npm ci
+      - run: npm install
 
-      - name: Run daily scan
+      - name: הרצת הסריקה היומית
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
