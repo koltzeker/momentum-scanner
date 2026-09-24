@@ -77,6 +77,8 @@
   </div>
   <div class="actions">
     <span class="status" id="statusMsg"></span>
+    <a href="/moni.html" style="text-decoration:none;display:inline-block;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:9px 16px;font-size:13px;font-weight:700">🤖 מוני</a>
+    <a href="/hype.html" style="text-decoration:none;display:inline-block;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:9px 16px;font-size:13px;font-weight:700">🔥 הייפ</a>
     <button class="secondary" onclick="loadData()">רענון תצוגה</button>
     <button onclick="triggerFullScan()" id="fullScanBtn">🔄 סרוק הכל עכשיו</button>
   </div>
@@ -130,7 +132,7 @@ function fmt(n, digits) {
   return Number(n).toFixed(digits ?? 2);
 }
 
-// אחוז הרווח בפועל בין כניסה ליעד - היעד הוא הגבוה מבין 15% מינימלי לבין רמת התנגדות
+// אחוז הרווח בפועל בין כניסה ליעד - היעד הוא הגבוה מבין 15% מינימלי לרמת התנגדות
 // טכנית אמיתית (שיא פיבוט קודם בגרף), אז האחוז בפועל יכול להיות גבוה יותר מ-15%.
 function targetGainPct(entry, target) {
   if (!entry || !target) return null;
