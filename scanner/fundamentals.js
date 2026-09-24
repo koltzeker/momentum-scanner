@@ -418,5 +418,7 @@ module.exports = {
   fetchStockAnalysisFinancials,
   fetchHistoricalPE,
   fetchFundamentalsSnapshot,
+  fetchSecMetrics,
+  fetchLatestFilingInfo,
   sleep,
 };
