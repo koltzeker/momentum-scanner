@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>הייפ | ניתוח מניות</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel2: #1f232c;
+    --border: #2a2f3a;
+    --text: #e6e9ef;
+    --muted: #8a91a0;
+    --green: #3ddc84;
+    --red: #ff5c5c;
+    --accent: #4f8cff;
+    --yellow: #f5c542;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', Arial, sans-serif;
+    margin: 0;
+    padding: 24px;
+  }
+  .header-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 4px; }
+  h1 { margin: 0; font-size: 24px; }
+  .subtitle { color: var(--muted); margin-bottom: 20px; font-size: 14px; }
+  .homelink { color: var(--muted); text-decoration: none; font-size: 12px; border: 1px solid var(--border); padding: 6px 10px; border-radius: 8px; }
+  .homelink:hover { border-color: var(--accent); color: var(--accent); }
+  .actions { display: flex; gap: 8px; align-items: center; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+  input[type="text"] {
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 14px;
+    flex: 1;
+    min-width: 200px;
+  }
+  .row { display: flex; gap: 12px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 14px;
+    cursor: pointer;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  button:hover { filter: brightness(1.1); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.secondary { background: var(--panel2); border: 1px solid var(--border); }
+  .status { color: var(--muted); font-size: 13px; }
+
+  .watchlist { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 8px 6px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .chip .remove {
+    cursor: pointer;
+    color: var(--red);
+    font-weight: 700;
+    background: none;
+    padding: 0 4px;
+    border-radius: 50%;
+    font-size: 13px;
+  }
+  .chip .remove:hover { background: rgba(255,92,92,0.15); }
+  .empty-watchlist { color: var(--muted); font-size: 13px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; text-align: center; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel); cursor: pointer; }
+  tr:hover td { background: var(--panel2); }
+  td.ticker { font-weight: 700; text-align: right; }
+  .up { color: var(--green); font-weight: 600; }
+  .down { color: var(--red); font-weight: 600; }
+  .score-cell { font-weight: 700; }
+  .table-wrap { overflow-x: auto; }
+
+  .earnings-green { background: rgba(61,220,132,0.18); color: var(--green); font-weight: 700; border-radius: 6px; }
+  .earnings-red { background: rgba(255,92,92,0.15); color: var(--red); font-weight: 700; border-radius: 6px; }
+
+  .errors { color: var(--red); font-size: 13px; margin-top: 10px; }
+  .news-toggle { color: var(--accent); cursor: pointer; font-size: 12px; }
+  .news-row td { text-align: right; background: var(--panel2); white-space: normal; }
+  .news-item { margin: 4px 0; font-size: 12px; }
+  .news-item a { color: var(--accent); text-decoration: none; }
+  .news-item span { color: var(--muted); margin-left: 6px; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 10px; line-height: 1.6; }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--muted); margin-top: 10px; flex-wrap: wrap; }
+  .legend span.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-left: 5px; vertical-align: middle; }
+
+  .details-toggle { color: var(--yellow); cursor: pointer; font-size: 12px; }
+  .report-toggle { color: var(--green); cursor: pointer; font-size: 12px; }
+  .details-row td { text-align: right; background: var(--panel2); white-space: normal; }
+  .details-grid { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .details-col { flex: 1; min-width: 280px; }
+  .chart-container { position: relative; height: 220px; }
+  .options-table { width: 100%; font-size: 12px; margin-top: 8px; }
+  .options-table td, .options-table th { padding: 4px 8px; text-align: center; border-bottom: 1px solid var(--border); white-space: normal; }
+  .details-loading { color: var(--muted); font-size: 13px; padding: 10px; }
+  .details-error { color: var(--red); font-size: 13px; padding: 10px; }
+</style>
+</head>
+<body>
+
+<div class="header-row">
+  <div>
+    <h1>הייפ 🔥</h1>
+    <div class="subtitle">ניתוח יסודות ומחיר הוגן למניות, מבוסס Finviz</div>
+  </div>
+  <div class="actions">
+    <a class="homelink" href="/index.html">← מומנטום יומי</a>
+    <button id="refreshTopBtn">🔄 רענון נתונים</button>
+  </div>
+</div>
+
+<div class="panel">
+  <label for="tickerInput">הוספת מניה לרשימת המעקב:</label>
+  <div class="row">
+    <input type="text" id="tickerInput" placeholder="לדוגמה: AAPL (אפשר גם כמה מופרדות בפסיק)">
+    <button id="addBtn">הוסף</button>
+  </div>
+  <div class="watchlist" id="watchlist"></div>
+  <div class="row">
+    <button id="analyzeBtn">טען נתונים</button>
+    <span class="status" id="status"></span>
+  </div>
+  <div class="errors" id="errors"></div>
+</div>
+
+<div class="panel table-wrap">
+  <table id="resultsTable">
+    <thead>
+      <tr>
+        <th data-key="ticker">טיקר</th>
+        <th data-key="price">מחיר</th>
+        <th data-key="peTTM">P/E</th>
+        <th data-key="forwardPE">Forward P/E</th>
+        <th data-key="salesTTM">הכנסות (TTM)</th>
+        <th data-key="salesQQ">שינוי מכירות רבעוני%</th>
+        <th data-key="epsQQ">שינוי EPS רבעוני%</th>
+        <th data-key="netIncomeTTM">רווח נקי אחה"מ</th>
+        <th data-key="estimatedOperatingExpenses">הוצ' תפעול (משוער)</th>
+        <th data-key="eps5Y">צמיחה 5Y%</th>
+        <th data-key="epsNextY">צמיחה שנה%</th>
+        <th data-key="fairValueAnalyst">יעד אנליסטים</th>
+        <th data-key="adjustedMultiple">מכפיל הוגן (מותאם)</th>
+        <th data-key="fairValueSelf">מחיר הוגן (עצמי)</th>
+        <th data-key="avgUpsidePct">אפסייד ממוצע%</th>
+        <th data-key="forecastPrice1Y">תחזית שנה</th>
+        <th data-key="earningsDate">דוח קרוב</th>
+        <th data-key="score">ניקוד</th>
+        <th>חדשות</th>
+        <th>פרטים</th>
+        <th>נתוני SEC</th>
+        <th>מקור</th>
+      </tr>
+    </thead>
+    <tbody id="resultsBody"></tbody>
+  </table>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--green)"></span>דוח בשבועיים הקרובים - שווה להתייחס</span>
+    <span><span class="dot" style="background:var(--red)"></span>תאריך הדוח חלף לפני יותר משבוע - כנראה לא מעודכן, אל תתייחס</span>
+  </div>
+</div>
+
+<div class="note">
+  <b>מתודולוגיה:</b><br>
+  • <b>P/E</b> — נלקח ישירות משדה "P/E" בפינויז (trailing, על בסיס רווחי 12 החודשים האחרונים). לחצו "פינויז ↗" בכל שורה כדי להשוות ישירות לעמוד המקור.<br>
+  • <b>רווח נקי אחה"מ</b> — שדה "Income" בפינויז (נטו, אחרי מס).<br>
+  • <b>שינוי מכירות/EPS רבעוני</b> — Sales Q/Q ו-EPS Q/Q בפינויז: שינוי % ברבעון האחרון לעומת אותו רבעון בשנה שעברה (לא מספרי מכירות שנתיים מוחלטים — פינויז לא חושף את אלה בגישה חינמית).<br>
+  • <b>הוצ' תפעול (משוער)</b> — <u>הערכה בלבד</u>, לא מספר מדוח: מחושבת מההפרש בין Gross Margin ל-Operating Margin של פינויז &times; הכנסות. פינויז לא מפרסם שורת "הוצאות תפעול" או "הוצאות כלליות" ישירה — רק מרווחים מצטברים, ולכן זו קירוב ולא נתון מדויק מהדוח הרשמי.<br>
+  • <b>יעד אנליסטים</b> — Target Price כפי שמופיע בפינויז.<br>
+  • <b>מחיר הוגן (עצמי) — גרסה משופרת:</b> עדיין מבוסס על כלל PEG=1 (Peter Lynch), אבל עם שלושה שיפורים: (א) <b>תקרה/רצפה על המכפיל</b> — המכפיל ("מכפיל הוגן (מותאם)") תמיד בין 10 ל-35, גם אם הצמיחה החזויה קיצונית יותר, כדי למנוע תוצאות הזויות. (ב) <b>בונוס איכות</b> — עד +10 למכפיל עבור ROE&gt;20%, מרווח רווח&gt;20%, וחוב/הון&lt;0.5 (מוצג ב-tooltip על העמודה) - חברות גדולות ויציבות "מרוויחות" תוספת מעבר לצמיחה הגולמית. (ג) <b>EPS ממוצע-קדימה</b> — במקום רק EPS TTM, ממוצע בין TTM לבין האומדן לשנה הבאה. הנוסחה: <code>מחיר הוגן = ((EPS TTM + EPS שנה הבאה)/2) &times; מכפיל מותאם</code>. עדיין לא מחושב אם אין נתון EPS next 5Y (כמו SNDK) - בכוונה, כדי לא להמציא נתון.<br>
+  • <b>Forward P/E</b> — נלקח ישירות מפינויז (מכפיל מבוסס רווח <u>צפוי</u>, לא היסטורי). משמש לחישוב "פער מכפיל" (Forward P/E מול המכפיל המותאם שלנו) שנכנס בעדינות לניקוד - אם השוק משלם פחות ממה שאנחנו חושבים הוגן על הרווח הצפוי, זה איתות תומך.<br>
+  • <b>⚡ מחלוקת מודלים</b> — אם יעד האנליסטים והמחיר ההוגן העצמי חלוקים ביניהם ביותר מ-40% (כמו שקרה עם GOOGL), זה מסומן באייקון ⚡ ליד "מחיר הוגן (עצמי)", והניקוד מקבל קנס -10 - כי פער קיצוני בין שני מודלים עצמאיים מעיד שלפחות אחד מהם לא אמין כאן, לא שיש הזדמנות כפולה.<br>
+  • <b>P/E היסטורי של המניה עצמה</b> (בפאנל "📊 פרטים", טור שלישי חדש) — גישה שונה לגמרי: במקום להשוות לצמיחה, משווה למכפיל שהמניה <u>עצמה</u> נסחרה בו בעבר (ממוצע P/E רבעוני, מ-stockanalysis.com). לא נכנס לניקוד הראשי כי זו קריאת רשת נוספת שנטענת רק בלחיצה, אחרי טעינת הטבלה.<br>
+  • <b>תחזית שנה — הסבר מלא:</b> העמודה "צמיחה שנה%" (שדה "EPS next Y" בפינויז) היא אחוז הצמיחה החזוי ברווח למניה (EPS) בשנה הקרובה, לפי הערכת אנליסטים. הנחת היסוד: אם המכפיל (P/E) שהשוק משלם היום נשאר קבוע, ומחיר המניה = P/E &times; EPS, אז כשה-EPS גדל ב-X%, גם המחיר צריך לגדול פחות או יותר באותו קצב X% (כי המכפיל לא משתנה בהנחה שלנו). לכן: <code>תחזית שנה = מחיר נוכחי &times; (1 + צמיחה שנה% / 100)</code>. זו לא תחזית "אמיתית" של אנליסט — זו הרחבה פשוטה של קצב הצמיחה החזוי קדימה, בהנחה שהשוק ימשיך להעריך את המניה באותו יחס בדיוק. אם המכפיל בפועל יעלה או ירד (למשל כי הסנטימנט על המניה משתנה), התחזית הזו לא תתממש.<br>
+  • <b>ניקוד</b> — נוסחה שבניתי, לא סטנדרט מקצועי: אפסייד ממוצע(%) + (צמיחה-5Y &times; 0.3) + בונוס 5 אם 0&lt;P/E&lt;40. <u>קנס 15</u> אם P/E שלילי <u>או חסר</u> (חברה לא רווחית/בלי נתון). <u>קנס 10</u> אם אין אומדן צמיחה ל-5 שנים. <u>קנס 10 נוסף</u> אם יש ⚡ מחלוקת מודלים. תוספת/הפחתה קטנה (&times;0.05) לפי פער ה-Forward P/E. סימן ⚠ ליד הניקוד מעיד שחלק מהנתונים חסרים ושהציון לא באמת מבוסס על תמונה מלאה — עברו עם העכבר על הסימן לראות אילו שדות חסרים.<br>
+  • <b>גרף הכנסות/הוצאות ואופציות</b> (בלחיצה על "📊 פרטים") — הכנסות/הוצאות היסטוריות מגיעות מ-stockanalysis.com (לא מפינויז), ונתוני האופציות (Put/Call OI ו-Volume) מ-Yahoo Finance, רק לתאריך הפקיעה הקרוב ביותר. שני המקורות האלה חיצוניים לפינויז וייתכן שישברו אם המבנה שלהם משתנה - יש לינק למקור בכל פאנל לאימות ידני.<br>
+  • <b>נתוני SEC</b> (בלחיצה על "📄 נתוני SEC") — הכנסות/הוצאות תפעול/רווח נקי, 8 תקופות אחרונות, ישירות מ-SEC EDGAR (מקור ממשלתי רשמי, לא scraping של אתר צד ג') + לינק לדוח המקורי (10-K/10-Q). זה חינמי ולא דורש שום הגדרה.<br>
+  הנתונים תלויים בזמינות ובדיוק Finviz וייתכנו שדות חסרים למניות מסוימות. רשימת המעקב נשמרת בדפדפן שלך (לא בשרת) ותישאר גם אחרי סגירה/רענון של הדף.
+</div>
+
+<script>
+const STORAGE_KEY = 'hype_watchlist';
+const addBtn = document.getElementById('addBtn');
+const tickerInput = document.getElementById('tickerInput');
+const watchlistEl = document.getElementById('watchlist');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const refreshTopBtn = document.getElementById('refreshTopBtn');
+const statusEl = document.getElementById('status');
+const errorsEl = document.getElementById('errors');
+const tbody = document.getElementById('resultsBody');
+let lastResults = [];
+
+// ---------- watchlist persistence (localStorage, per-browser) ----------
+
+function loadWatchlist() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : ['AAPL', 'MSFT', 'NVDA'];
+  } catch {
+    return ['AAPL', 'MSFT', 'NVDA'];
+  }
+}
+
+function saveWatchlist(list) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+}
+
+let watchlist = loadWatchlist();
+
+function renderWatchlist() {
+  watchlistEl.innerHTML = '';
+  if (!watchlist.length) {
+    watchlistEl.innerHTML = '<span class="empty-watchlist">הרשימה ריקה - הוסיפו טיקר למעלה</span>';
+    return;
+  }
+  watchlist.forEach((t) => {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML = `${t} <span class="remove" data-ticker="${t}">✕</span>`;
+    watchlistEl.appendChild(chip);
+  });
+}
+
+watchlistEl.addEventListener('click', (e) => {
+  if (e.target.classList.contains('remove')) {
+    const t = e.target.dataset.ticker;
+    watchlist = watchlist.filter((x) => x !== t);
+    saveWatchlist(watchlist);
+    renderWatchlist();
+  }
+});
+
+addBtn.addEventListener('click', () => {
+  const raw = tickerInput.value;
+  const newTickers = raw.split(/[\s,]+/).map((t) => t.trim().toUpperCase()).filter(Boolean);
+  if (!newTickers.length) return;
+  newTickers.forEach((t) => {
+    if (!watchlist.includes(t)) watchlist.push(t);
+  });
+  saveWatchlist(watchlist);
+  renderWatchlist();
+  tickerInput.value = '';
+});
+
+tickerInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') addBtn.click();
+});
+
+renderWatchlist();
+
+// ---------- formatting helpers ----------
+
+function fmt(n, decimals = 2) {
+  if (n === null || n === undefined || isNaN(n)) return '-';
+  return Number(n).toFixed(decimals);
+}
+
+function fmtMoney(n) {
+  if (n === null || n === undefined || isNaN(n)) return '-';
+  const abs = Math.abs(n);
+  if (abs >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+  if (abs >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (abs >= 1e3) return (n / 1e3).toFixed(0) + 'K';
+  return n.toFixed(0);
+}
+
+function pctClass(n) {
+  if (n === null || n === undefined || isNaN(n)) return '';
+  return n >= 0 ? 'up' : 'down';
+}
+
+function classifyEarnings(dateStr) {
+  if (!dateStr || dateStr === '-') return '';
+  const months = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+  const match = dateStr.match(/([A-Za-z]{3})\s+(\d{1,2})/);
+  if (!match) return '';
+  const month = months[match[1]];
+  const day = parseInt(match[2], 10);
+  if (month === undefined || isNaN(day)) return '';
+
+  const now = new Date();
+  let candidate = new Date(now.getFullYear(), month, day);
+  const diffDaysRaw = (candidate - now) / (1000 * 60 * 60 * 24);
+  if (diffDaysRaw < -180) {
+    candidate = new Date(now.getFullYear() + 1, month, day);
+  }
+  const diffDays = (candidate - now) / (1000 * 60 * 60 * 24);
+
+  if (diffDays < -7) return 'earnings-red';
+  if (diffDays >= 0 && diffDays <= 14) return 'earnings-green';
+  return '';
+}
+
+function renderNewsRow(ticker, news) {
+  if (!news || !news.length) return '<div class="news-item">אין חדשות זמינות</div>';
+  return news
+    .slice(0, 6)
+    .map(
+      (n) =>
+        `<div class="news-item"><a href="${n.url || '#'}" target="_blank">${n.title}</a><span>${n.date}</span></div>`
+    )
+    .join('');
+}
+
+function render(results) {
+  tbody.innerHTML = '';
+  results.forEach((r) => {
+    const tr = document.createElement('tr');
+    const forecastChangePct = r.price && r.forecastPrice1Y ? ((r.forecastPrice1Y - r.price) / r.price) * 100 : null;
+    const earningsClass = classifyEarnings(r.earningsDate);
+    tr.innerHTML = `
+      <td class="ticker">${r.ticker}<br><span style="color:var(--muted);font-weight:400;font-size:11px">${r.companyName || ''}</span></td>
+      <td>${fmt(r.price)}</td>
+      <td>${fmt(r.peTTM)}</td>
+      <td>${fmt(r.forwardPE)}</td>
+      <td>${fmtMoney(r.salesTTM)}</td>
+      <td class="${pctClass(r.salesQQ)}">${fmt(r.salesQQ, 1)}</td>
+      <td class="${pctClass(r.epsQQ)}">${fmt(r.epsQQ, 1)}</td>
+      <td>${fmtMoney(r.netIncomeTTM)}</td>
+      <td>${fmtMoney(r.estimatedOperatingExpenses)}</td>
+      <td class="${pctClass(r.eps5Y)}">${fmt(r.eps5Y, 1)}</td>
+      <td class="${pctClass(r.epsNextY)}">${fmt(r.epsNextY, 1)}</td>
+      <td>${fmt(r.fairValueAnalyst)} <span class="${pctClass(r.upsideAnalystPct)}">(${fmt(r.upsideAnalystPct,1)}%)</span></td>
+      <td>${fmt(r.adjustedMultiple, 1)}</td>
+      <td>${fmt(r.fairValueSelf)} <span class="${pctClass(r.upsideSelfPct)}">(${fmt(r.upsideSelfPct,1)}%)</span>${r.modelDisagreement ? ' <span title="פער קיצוני בין יעד האנליסטים למחיר ההוגן העצמי - שני האומדנים לא מסכימים, זהירות" style="color:var(--yellow);cursor:help">⚡</span>' : ''}</td>
+      <td class="${pctClass(r.avgUpsidePct)}">${fmt(r.avgUpsidePct, 1)}%</td>
+      <td>${fmt(r.forecastPrice1Y)} <span class="${pctClass(forecastChangePct)}">(${fmt(forecastChangePct,1)}%)</span></td>
+      <td class="${earningsClass}">${r.earningsDate || '-'}</td>
+      <td class="score-cell ${pctClass(r.score)}">${fmt(r.score, 1)}${r.dataComplete ? '' : ` <span title="נתונים חסרים: ${(r.missingFields||[]).join(', ')}" style="color:var(--yellow);cursor:help">⚠</span>`}</td>
+      <td><span class="news-toggle" data-ticker="${r.ticker}">הצג</span></td>
+      <td><span class="details-toggle" data-ticker="${r.ticker}">📊 פרטים</span></td>
+      <td><span class="report-toggle" data-ticker="${r.ticker}">📄 נתוני SEC</span></td>
+      <td><a href="${r.finvizUrl}" target="_blank" style="color:var(--accent)">פינויז ↗</a></td>
+    `;
+    tbody.appendChild(tr);
+
+    const newsTr = document.createElement('tr');
+    newsTr.className = 'news-row';
+    newsTr.style.display = 'none';
+    newsTr.dataset.newsFor = r.ticker;
+    const td = document.createElement('td');
+    td.colSpan = 22;
+    td.innerHTML = renderNewsRow(r.ticker, r.news);
+    newsTr.appendChild(td);
+    tbody.appendChild(newsTr);
+
+    const detailsTr = document.createElement('tr');
+    detailsTr.className = 'details-row';
+    detailsTr.style.display = 'none';
+    detailsTr.dataset.detailsFor = r.ticker;
+    const detailsTd = document.createElement('td');
+    detailsTd.colSpan = 22;
+    detailsTd.innerHTML = '<div class="details-loading">לא נטען עדיין - לחצו "📊 פרטים" כדי לטעון</div>';
+    detailsTr.appendChild(detailsTd);
+    tbody.appendChild(detailsTr);
+
+    const reportTr = document.createElement('tr');
+    reportTr.className = 'details-row';
+    reportTr.style.display = 'none';
+    reportTr.dataset.reportFor = r.ticker;
+    const reportTd = document.createElement('td');
+    reportTd.colSpan = 22;
+    reportTd.innerHTML = '<div class="details-loading">לא נטען עדיין - לחצו "📄 נתוני SEC" כדי לטעון</div>';
+    reportTr.appendChild(reportTd);
+    tbody.appendChild(reportTr);
+  });
+}
+
+tbody.addEventListener('click', (e) => {
+  if (e.target.classList.contains('news-toggle')) {
+    const ticker = e.target.dataset.ticker;
+    const row = tbody.querySelector(`tr[data-news-for="${ticker}"]`);
+    if (row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+  }
+  if (e.target.classList.contains('details-toggle')) {
+    const ticker = e.target.dataset.ticker;
+    const row = tbody.querySelector(`tr[data-details-for="${ticker}"]`);
+    if (!row) return;
+    const isHidden = row.style.display === 'none';
+    row.style.display = isHidden ? 'table-row' : 'none';
+    if (isHidden && !row.dataset.loaded) {
+      row.dataset.loaded = '1';
+      loadDetails(ticker, row);
+    }
+  }
+  if (e.target.classList.contains('report-toggle')) {
+    const ticker = e.target.dataset.ticker;
+    const row = tbody.querySelector(`tr[data-report-for="${ticker}"]`);
+    if (!row) return;
+    const isHidden = row.style.display === 'none';
+    row.style.display = isHidden ? 'table-row' : 'none';
+    if (isHidden && !row.dataset.loaded) {
+      row.dataset.loaded = '1';
+      loadReportAnalysis(ticker, row);
+    }
+  }
+});
+
+async function loadReportAnalysis(ticker, row) {
+  const td = row.querySelector('td');
+  td.innerHTML = '<div class="details-loading">שולף נתונים רשמיים מ-SEC EDGAR...</div>';
+
+  try {
+    const resp = await fetch(`/api/hype?action=report&ticker=${ticker}`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'שגיאה בשרת');
+
+    const m = data.metrics;
+    const rowHtml = (labelRow, series) => {
+      if (!series) return `<tr><td>${labelRow}</td><td colspan="8">אין נתון (התגית לא נמצאה ב-SEC עבור החברה הזו)</td></tr>`;
+      return `<tr><td>${labelRow}</td>${series.map((e) => `<td>${e.period}<br>${fmtMoney(e.value)}</td>`).join('')}</tr>`;
+    };
+
+    td.innerHTML = `
+      <div><b>מקור נתונים:</b> SEC EDGAR (${data.filing.form}, הוגש ${data.filing.filingDate}) — <a href="${data.filing.docUrl}" target="_blank" style="color:var(--accent)">הדוח המקורי ↗</a></div>
+      <table class="options-table" style="margin-top:10px">
+        ${rowHtml('הכנסות', m.revenue)}
+        ${rowHtml('הוצאות תפעול', m.operatingExpenses)}
+        ${rowHtml('רווח נקי', m.netIncome)}
+      </table>
+    `;
+  } catch (err) {
+    td.innerHTML = `<div class="details-error">שגיאה: ${err.message}</div>`;
+  }
+}
+
+const chartInstances = {};
+
+async function loadDetails(ticker, row) {
+  const td = row.querySelector('td');
+  td.innerHTML = '<div class="details-loading">טוען נתוני הכנסות/הוצאות ואופציות...</div>';
+
+  const [financialsResult, optionsResult] = await Promise.allSettled([
+    fetch(`/api/hype?action=financials&ticker=${ticker}`).then((r) => r.json().then((data) => ({ ok: r.ok, data }))),
+    fetch(`/api/hype?action=options&ticker=${ticker}`).then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+  ]);
+
+  td.innerHTML = `
+    <div class="details-grid">
+      <div class="details-col">
+        <b>הכנסות מול הוצאות תפעול (רבעוני)</b>
+        <div class="chart-container"><canvas id="chart-${ticker}"></canvas></div>
+        <div id="financials-error-${ticker}"></div>
+      </div>
+      <div class="details-col">
+        <b>אופציות - תפוגה קרובה ביותר</b>
+        <div id="options-${ticker}"></div>
+      </div>
+      <div class="details-col">
+        <b>מחיר הוגן לפי P/E היסטורי של המניה</b>
+        <div id="histpe-${ticker}"></div>
+      </div>
+    </div>
+  `;
+
+  const finBox = document.getElementById(`financials-error-${ticker}`);
+  if (financialsResult.status === 'fulfilled' && financialsResult.value.ok) {
+    const fin = financialsResult.value.data;
+    const periods = (fin.periods || []).slice().reverse();
+    const revenue = (fin.revenue || []).slice().reverse();
+    const expenses = (fin.operatingExpenses || []).slice().reverse();
+
+    const ctx = document.getElementById(`chart-${ticker}`);
+    if (chartInstances[ticker]) chartInstances[ticker].destroy();
+    chartInstances[ticker] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: periods,
+        datasets: [
+          { label: 'הכנסות', data: revenue, backgroundColor: '#4f8cff' },
+          { label: 'הוצאות תפעול', data: expenses, backgroundColor: '#ff5c5c' }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#e6e9ef' } } },
+        scales: {
+          x: { ticks: { color: '#8a91a0' }, grid: { color: '#2a2f3a' } },
+          y: { ticks: { color: '#8a91a0' }, grid: { color: '#2a2f3a' } }
+        }
+      }
+    });
+    finBox.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-top:4px">מקור: <a href="${fin.sourceUrl}" target="_blank" style="color:var(--accent)">stockanalysis.com ↗</a> (יחידות כפי שמוצגות באתר המקור)</div>`;
+  } else {
+    const err = financialsResult.status === 'fulfilled' ? financialsResult.value.data.error : financialsResult.reason;
+    finBox.innerHTML = `<div class="details-error">לא ניתן לטעון נתוני הכנסות/הוצאות: ${err}</div>`;
+  }
+
+  const optBox = document.getElementById(`options-${ticker}`);
+  if (optionsResult.status === 'fulfilled' && optionsResult.value.ok) {
+    const o = optionsResult.value.data;
+    optBox.innerHTML = `
+      <table class="options-table">
+        <tr><td>תאריך פקיעה</td><td>${o.expirationDate || '-'}</td></tr>
+        <tr><td>Open Interest קולים</td><td>${fmt(o.callOpenInterest, 0)}</td></tr>
+        <tr><td>Open Interest פוטים</td><td>${fmt(o.putOpenInterest, 0)}</td></tr>
+        <tr><td>יחס Put/Call (OI)</td><td class="${pctClass(o.putCallOIRatio !== null ? o.putCallOIRatio - 1 : null)}">${fmt(o.putCallOIRatio)}</td></tr>
+        <tr><td>נפח קולים היום</td><td>${fmt(o.callVolume, 0)}</td></tr>
+        <tr><td>נפח פוטים היום</td><td>${fmt(o.putVolume, 0)}</td></tr>
+        <tr><td>יחס Put/Call (Volume)</td><td class="${pctClass(o.putCallVolumeRatio !== null ? o.putCallVolumeRatio - 1 : null)}">${fmt(o.putCallVolumeRatio)}</td></tr>
+        <tr><td>Strike הכי פעיל (Call)</td><td>${o.topCallStrike ? `${o.topCallStrike.strike} (OI: ${fmt(o.topCallStrike.openInterest,0)})` : '-'}</td></tr>
+        <tr><td>Strike הכי פעיל (Put)</td><td>${o.topPutStrike ? `${o.topPutStrike.strike} (OI: ${fmt(o.topPutStrike.openInterest,0)})` : '-'}</td></tr>
+      </table>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">${o.note || ''}</div>
+    `;
+  } else {
+    const err = optionsResult.status === 'fulfilled' ? optionsResult.value.data.error : optionsResult.reason;
+    optBox.innerHTML = `<div class="details-error">לא ניתן לטעון נתוני אופציות: ${err}</div>`;
+  }
+
+  const histBox = document.getElementById(`histpe-${ticker}`);
+  const rowData = lastResults.find((x) => x.ticker === ticker);
+  if (financialsResult.status === 'fulfilled' && financialsResult.value.ok) {
+    const fin = financialsResult.value.data;
+    if (fin.historicalPE && rowData && rowData.epsTTM !== null) {
+      const avgPE = fin.historicalPE.avgHistoricalPE;
+      const fairValueHist = rowData.epsTTM * avgPE;
+      const upsideHist = rowData.price ? ((fairValueHist - rowData.price) / rowData.price) * 100 : null;
+      histBox.innerHTML = `
+        <table class="options-table">
+          <tr><td>P/E ממוצע היסטורי (${fin.historicalPE.periodsUsed} תקופות)</td><td>${fmt(avgPE)}</td></tr>
+          <tr><td>מחיר הוגן (EPS TTM &times; P/E ממוצע)</td><td>${fmt(fairValueHist)}</td></tr>
+          <tr><td>אפסייד לפי זה</td><td class="${pctClass(upsideHist)}">${fmt(upsideHist,1)}%</td></tr>
+        </table>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">מקור: <a href="${fin.historicalPE.sourceUrl}" target="_blank" style="color:var(--accent)">stockanalysis.com ↗</a> - משווה למכפיל שהמניה עצמה נסחרה בו בעבר, לא למכפיל "הוגן" תיאורטי</div>
+      `;
+    } else {
+      histBox.innerHTML = `<div class="details-error">לא ניתן לחשב: ${fin.historicalPEError || 'אין נתון P/E TTM זמין'}</div>`;
+    }
+  } else {
+    histBox.innerHTML = `<div class="details-error">לא ניתן לטעון נתוני P/E היסטוריים</div>`;
+  }
+}
+
+document.querySelectorAll('th[data-key]').forEach((th) => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.key;
+    lastResults.sort((a, b) => {
+      const av = a[key], bv = b[key];
+      if (av === null || av === undefined) return 1;
+      if (bv === null || bv === undefined) return -1;
+      if (typeof av === 'string') return av.localeCompare(bv);
+      return bv - av;
+    });
+    render(lastResults);
+  });
+});
+
+async function analyze() {
+  if (!watchlist.length) {
+    errorsEl.textContent = 'הרשימה ריקה - הוסיפו לפחות טיקר אחד';
+    return;
+  }
+  analyzeBtn.disabled = true;
+  refreshTopBtn.disabled = true;
+  statusEl.textContent = `טוען נתונים עבור ${watchlist.length} מניות... זה עשוי לקחת כמה שניות`;
+  errorsEl.textContent = '';
+  tbody.innerHTML = '';
+
+  try {
+    const resp = await fetch('/api/hype?action=analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tickers: watchlist })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'שגיאה בשרת');
+
+    lastResults = data.results || [];
+    render(lastResults);
+    statusEl.textContent = `הוצגו ${lastResults.length} מניות`;
+
+    if (data.errors && data.errors.length) {
+      errorsEl.textContent = 'שגיאות: ' + data.errors.map((e) => `${e.ticker} (${e.error})`).join(', ');
+    }
+  } catch (err) {
+    statusEl.textContent = '';
+    errorsEl.textContent = 'שגיאה: ' + err.message;
+  } finally {
+    analyzeBtn.disabled = false;
+    refreshTopBtn.disabled = false;
+  }
+}
+
+analyzeBtn.addEventListener('click', analyze);
+refreshTopBtn.addEventListener('click', analyze);
+</script>
+</body>
+</html>
