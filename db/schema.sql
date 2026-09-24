@@ -56,6 +56,26 @@ create table if not exists fundamentals_snapshot (
   fetched_at    timestamptz not null default now()
 );
 
+-- פוזיציות פתוחות שסומנו ידנית - שומר תמונת מצב קפואה (snapshot) של התרחיש בזמן הסימון,
+-- כדי שהכניסה/סטופ/יעד יישארו מוצגים גם אם הסריקה היומית הבאה כבר לא מזהה תרחיש תקף לאותה
+-- מניה (כי המחיר כבר זז אחרי שנכנסת). "סגירת" פוזיציה רק מסמנת closed_at, לא מוחקת - כדי
+-- לשמור היסטוריה.
+create table if not exists positions (
+  id            bigserial primary key,
+  symbol        text not null references tickers(symbol) on delete cascade,
+  entry         numeric,
+  stop          numeric,
+  target        numeric,
+  add_level     numeric,
+  anchored_vwap numeric,
+  wave_a_high   numeric,
+  current_close numeric,
+  note          text,
+  opened_at     timestamptz not null default now(),
+  closed_at     timestamptz
+);
+create index if not exists idx_positions_open on positions(symbol) where closed_at is null;
+
 -- לוג הרצות הסריקה (לצורך דיבוג/ניטור מתי הרצה האחרונה הצליחה)
 create table if not exists scan_runs (
   id            bigserial primary key,
@@ -66,4 +86,15 @@ create table if not exists scan_runs (
   valid_count   integer,
   status        text,               -- 'ok' | 'error'
   error_message text
+);
+
+-- מצב האפליקציה "מוני" (עמוד /moni.html) - שורה אחת יחידה (id=1), מחליפה את הקובץ
+-- המקומי moni_data.json שהיה בגרסה הישנה שרצה על המחשב האישי. כל האובייקט (פוזיציות,
+-- ווטצ'ליסט, פוזיציות שזוהו מהצ'אט, תוכניות שמורות, היסטוריית שיחה, תוכנית יומית)
+-- נשמר כ-JSON יחיד, בדיוק כמו שהפרונט-אנד היה שולח לקובץ המקומי.
+create table if not exists moni_state (
+  id          integer primary key default 1,
+  data        jsonb not null default '{}'::jsonb,
+  updated_at  timestamptz not null default now(),
+  constraint moni_state_singleton check (id = 1)
 );
