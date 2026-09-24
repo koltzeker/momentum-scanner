@@ -22,7 +22,17 @@ module.exports = async (req, res) => {
   try {
     const p = getPool();
 
-    const latestDateRes = await p.query('select max(scan_date) as d from momentum_setups');
+    // לא פשוט max(scan_date): רענון בודד של מניה (למשל בעת הוספה לרשימת מעקב) כותב שורה
+    // אחת עם תאריך של היום, וזה יכול "לעקוף" תאריך יותר ישן שבו כן רצה הסריקה המלאה
+    // (מאות שורות) - מה שהיה גורם לטבלת "מועמדים היום" להיראות ריקה. לכן בוחרים את
+    // התאריך עם הכי הרבה שורות (הסריקה האמיתית), לא סתם את התאריך המאוחר ביותר.
+    const latestDateRes = await p.query(
+      `select scan_date as d
+       from momentum_setups
+       group by scan_date
+       order by count(*) desc, scan_date desc
+       limit 1`
+    );
     const scanDate = latestDateRes.rows[0]?.d;
 
     const candidatesRes = scanDate
@@ -53,10 +63,25 @@ module.exports = async (req, res) => {
        from scan_runs order by started_at desc limit 5`
     );
 
+    // עטוף בנפרד: אם טבלת positions עוד לא נוצרה ב-DB (טרם הורצה עדכון הסכמה), לא נרצה
+    // שזה יפיל את כל התגובה - רק שהפוזיציות יחזרו ריקות עד שהסכמה תעודכן.
+    let positions = [];
+    try {
+      const positionsRes = await p.query(
+        `select id, symbol, entry, stop, target, add_level, anchored_vwap, wave_a_high,
+                current_close, note, opened_at
+         from positions where closed_at is null order by opened_at desc`
+      );
+      positions = positionsRes.rows;
+    } catch (e) {
+      positions = [];
+    }
+
     res.status(200).json({
       scanDate: scanDate || null,
       candidates: candidatesRes.rows,
       watchlist: watchlistRes.rows,
+      positions,
       recentRuns: lastRunRes.rows,
     });
   } catch (e) {
