@@ -130,6 +130,13 @@ function fmt(n, digits) {
   return Number(n).toFixed(digits ?? 2);
 }
 
+// אחוז הרווח בפועל בין כניסה ליעד - היעד הוא הגבוה מבין 15% מינימלי לבין רמת התנגדות
+// טכנית אמיתית (שיא פיבוט קודם בגרף), אז האחוז בפועל יכול להיות גבוה יותר מ-15%.
+function targetGainPct(entry, target) {
+  if (!entry || !target) return null;
+  return ((target / entry - 1) * 100);
+}
+
 function daysAgoLabel(scanDate) {
   if (!scanDate) return '';
   const d = new Date(scanDate);
@@ -177,23 +184,24 @@ function renderCandidates(rows) {
     return;
   }
   let html = `<table><thead><tr>
-    <th>טיקר</th><th>שם</th><th>מחיר</th><th>כניסה</th><th>סטופ</th><th>יעד (+15%)</th>
+    <th>טיקר</th><th>שם</th><th>מחיר</th><th>כניסה</th><th>סטופ</th><th>יעד משוער (מינ' 15%)</th>
     <th>הוספה</th><th>VWAP מעוגן</th><th>שיא Wave A</th><th>לפני כמה ימים</th><th></th>
   </tr></thead><tbody>`;
   for (const r of rows) {
     const isFtmo = FTMO_SYMBOLS.has(r.symbol);
+    const gainPct = targetGainPct(r.entry, r.target);
     html += `<tr class="${isFtmo ? 'ftmo-row' : ''}">
       <td class="sym">${isFtmo ? '<span class="ftmo-badge" title="ניתן לסחור ב-FTMO">FTMO</span>' : ''}${r.symbol}</td>
       <td>${r.name || ''}</td>
       <td class="num">$${fmt(r.current_close)}</td>
       <td class="num entry-val">$${fmt(r.entry)}</td>
       <td class="num stop-val">$${fmt(r.stop)}</td>
-      <td class="num target-val">$${fmt(r.target)}</td>
+      <td class="num target-val" title="יעד = הגבוה מבין 15% מינימום לבין רמת התנגדות טכנית קודמת בגרף">$${fmt(r.target)}${gainPct !== null ? ` <span style="color:var(--muted);font-size:11px;">(+${fmt(gainPct,0)}%)</span>` : ''}</td>
       <td class="num">$${fmt(r.add_level)}</td>
       <td class="num">$${fmt(r.anchored_vwap)}</td>
       <td class="num">$${fmt(r.wave_a_high)}</td>
       <td class="num">${r.wave_a_high_days_ago ?? '—'}</td>
-      <td><button class="pin-btn" onclick="markPosition('${r.symbol}')">📌 סמן פוזיציה</button></td>
+      <td><button class="pin-btn" onclick="markPosition('${r.symbol}', this)">📌 סמן פוזיציה</button></td>
     </tr>`;
   }
   html += '</tbody></table>';
@@ -221,9 +229,13 @@ function renderPositions(rows) {
     </div>`).join('');
 }
 
-async function markPosition(symbol) {
+async function markPosition(symbol, btn) {
   const r = lastCandidates.find((c) => c.symbol === symbol);
   if (!r) return;
+  // משוב ישירות על הכפתור עצמו - לא רק בשורת הסטטוס הקטנה למעלה, כדי שכשל לא
+  // ייראה כאילו "כלום לא קרה" (למשל אם טבלת positions עדיין לא נוצרה ב-DB).
+  const originalHtml = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '...'; btn.title = ''; }
   setStatus('מסמן פוזיציה ב-' + symbol + '...');
   try {
     const resp = await fetch(`${API}/api/positions`, {
@@ -240,6 +252,12 @@ async function markPosition(symbol) {
     setStatus('הפוזיציה ב-' + symbol + ' סומנה ונשמרה');
   } catch (e) {
     setStatus('שגיאה בסימון פוזיציה: ' + e.message);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '⚠️ שגיאה - לחץ לפרטים';
+      btn.title = e.message;
+      btn.onclick = () => alert('שגיאה בסימון הפוזיציה:\n\n' + e.message);
+    }
   }
 }
 
