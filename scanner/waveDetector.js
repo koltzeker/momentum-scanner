@@ -26,6 +26,34 @@ function sma(values, period) {
 }
 
 /**
+ * מוצא רמת התנגדות טכנית (שיא פיבוט אמיתי בהיסטוריה) מעל יעד המינימום, כדי שהיעד
+ * שמוצג ישקף רמה אמיתית בגרף שבה סביר שהמניה תיתקל בהתנגדות - לא רק תוספת אחוזית
+ * שרירותית. "פיבוט" = נר שהשיא שלו גבוה מהשיא של pivotSpan נרות משני הצדדים (שיא
+ * מקומי מאומת, לא רק הערך הכי גבוה בטווח). בוחרים את הפיבוט הקרוב ביותר (הנמוך
+ * ביותר מבין אלו שמעל הרף) - זו ההתנגדות הראשונה שהמניה צפויה להיתקל בה מעל
+ * המינימום, ולכן היעד הסביר והקרוב ביותר. מחפשים על פני כל ההיסטוריה הזמינה (עד שנה).
+ */
+function findTechnicalTarget(bars, minTarget) {
+  if (minTarget === null) return null;
+  const n = bars.length;
+  const pivotSpan = 3;
+  let best = null;
+  for (let i = pivotSpan; i < n - pivotSpan; i++) {
+    const h = bars[i].high;
+    if (h <= minTarget) continue;
+    let isPivot = true;
+    for (let k = 1; k <= pivotSpan; k++) {
+      if (bars[i - k].high > h || bars[i + k].high > h) {
+        isPivot = false;
+        break;
+      }
+    }
+    if (isPivot && (best === null || h < best)) best = h;
+  }
+  return best;
+}
+
+/**
  * מזהה תרחיש מומנטום יומי (Wave A/B) על סמך מערך נרות יומיים.
  * @param {Array<{date:string, high:number, low:number, close:number, volume:number}>} bars
  *        מהישן לחדש, הנר האחרון = היום/הנר האחרון שנסגר.
@@ -67,8 +95,28 @@ function detectDailySetup(bars, opts = {}) {
     }
   }
 
-  // גל A תקף רק אם עברו מספיק ימים מאז השיא כדי שגל B יספיק להיווצר
-  const wAValid = wAHigh !== null && wAHighOff >= cfg.waveBBars;
+  // ── אימות שגל A הוא באמת "גל" ולא סתם השיא הגולמי בחלון ──
+  // דורשים רצף עולה של לפחות waveBBars נרות (שיא עולה + נפח עולה) שמוביל לתוך השיא,
+  // בדיוק כמו זיהוי גל A שהתפתח ב-RKY MON (symmetric rising-streak detector). בלי זה,
+  // wAHigh הוא רק המקסימום הגולמי בחלון - בלי שום אימות שהוא נוצר מתוך תנועה אמיתית.
+  let wARisingStreakLen = 0;
+  if (wAHigh !== null) {
+    wARisingStreakLen = 1; // נר השיא עצמו
+    for (let k = 1; wAHighOff + k < lbBars && n - 1 - (wAHighOff + k) >= 0; k++) {
+      const earlier = back(wAHighOff + k); // נר קודם יותר בזמן
+      const later = back(wAHighOff + k - 1); // צעד אחד קרוב יותר לשיא
+      if (earlier.high <= later.high && earlier.volume <= later.volume) {
+        wARisingStreakLen++;
+      } else {
+        break;
+      }
+    }
+  }
+  const wARisingStreakOk = wARisingStreakLen >= cfg.waveBBars;
+
+  // גל A תקף רק אם עברו מספיק ימים מאז השיא כדי שגל B יספיק להיווצר, וגם שהשיא עצמו
+  // אומת כרצף עולה אמיתי (לא רק המספר הכי גבוה בחלון)
+  const wAValid = wAHigh !== null && wAHighOff >= cfg.waveBBars && wARisingStreakOk;
 
   // ── גל B: השפל מאז שיא גל A ──
   let wBLow = null;
@@ -119,7 +167,13 @@ function detectDailySetup(bars, opts = {}) {
 
   const entry = bValid ? wBLow + cfg.stopBuf * 3 : null;
   const stop = bValid ? wBLow - cfg.stopBuf : null;
-  const target = bValid ? entry * (1 + cfg.targetPct / 100) : null;
+
+  // ── יעד: 15% הוא רף מינימלי, לא היעד עצמו - משתדרג לרמה טכנית אמיתית (שיא פיבוט
+  // קודם בגרף) כשקיימת התנגדות כזו מעל הרף, לפי בקשה מפורשת של רון ────────────────
+  const minTarget = bValid ? entry * (1 + cfg.targetPct / 100) : null;
+  const techTarget = bValid ? findTechnicalTarget(bars, minTarget) : null;
+  const target = techTarget !== null ? techTarget : minTarget;
+  const targetIsTechnical = techTarget !== null;
   const addLevel = bValid ? wAHigh + cfg.stopBuf : null;
 
   // ── VWAP מעוגן (anchored) מנקודת שיא גל A קדימה עד היום - תחליף ל-VWAP התוך-יומי ──
@@ -157,11 +211,13 @@ function detectDailySetup(bars, opts = {}) {
     currentClose,
     waveAHigh: wAHigh,
     waveAHighDaysAgo: wAValid ? wAHighOff : null,
+    waveARisingStreakLen: wAHigh !== null ? wARisingStreakLen : null,
     waveBLow: wBLow,
     entry,
     stop,
     stopHist,
     target,
+    targetIsTechnical,
     addLevel,
     anchoredVwap,
     aboveWaveB,
