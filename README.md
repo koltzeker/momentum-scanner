@@ -17,10 +17,17 @@ scanner/fundamentals.js    פונדמנטלס: Finviz + SEC EDGAR + stockanalysi
 scanner/updateUniverse.js  מעדכן את רשימת S&P500+Nasdaq100 מ-Wikipedia (רץ פעם בשבוע)
 scanner/run.js             נקודת הכניסה של הסריקה היומית
 scanner/db.js              עטיפת Postgres
+scanner/moniMarket.js      נתוני שוק (Yahoo) לעמוד מוני (פורט מ-MONEY/server.js)
+scanner/moniAgent.js       סוכן ה-Claude של מוני (system prompt + קריאה ל-Anthropic API)
+scanner/moniAuth.js        הגנת הסיסמה המשותפת לעמוד מוני
+scanner/moniStore.js       שמירת מצב מוני ב-Postgres (מחליף את moni_data.json)
+scanner/yahooOptions.js    שרשרת אופציות (Yahoo) לעמוד הייפ
 db/schema.sql              סכמת ה-DB - להריץ פעם אחת
 .github/workflows/         שני ה-cron jobs (סריקה יומית + עדכון אוניברסה שבועי)
-api/                       Serverless functions ל-Vercel (נתונים לפרונט, רשימת מעקב, רענון ידני)
-web/index.html             הפרונט-אנד - עברית RTL
+api/                       Serverless functions ל-Vercel (נתונים לפרונט, מוני, הייפ, רשימת מעקב, רענון ידני)
+web/index.html             הפרונט-אנד הראשי - עברית RTL
+web/moni.html              עמוד מוני (סוכן מסחר) - מוגן בסיסמה משותפת
+web/hype.html              עמוד הייפ (ניתוח פונדמנטלי) - ללא הגנה
 ```
 
 ## הקמה — פעם אחת
@@ -59,11 +66,33 @@ web/index.html             הפרונט-אנד - עברית RTL
      Personal access tokens → Fine-grained, הרשאת `Actions: Read and write` על הריפו הזה
      בלבד) — נדרש רק כדי שכפתור "סרוק הכל עכשיו" יוכל להפעיל את ה-Action.
    - `GITHUB_REPO` — לדוגמה `ron-username/momentum-scanner`
+   - `MONI_PASSWORD` — סיסמה שאתה בוחר בעצמך (כל טקסט) - זו הסיסמה שתזין כדי להיכנס
+     לעמוד מוני (`/moni.html`). בלי המשתנה הזה עמוד מוני יחזיר שגיאה במקום מסך התחברות.
+   - `ANTHROPIC_API_KEY` — מפתח ה-Anthropic API שלך (מתחיל ב-`sk-ant-`), מ-
+     [console.anthropic.com](https://console.anthropic.com) → API Keys. הוא נשמר בשרת
+     בלבד ולא נחשף בדפדפן - בניגוד לגרסה הישנה של מוני שרצה על המחשב שלך, כאן אתה לא
+     מזין אותו בכל פעם בממשק.
 4. **Deploy**. בסיום תקבל כתובת כמו `momentum-scanner.vercel.app` — זה האתר שלך, זמין
    מכל מקום (גם מהנייד).
 
 זהו — המערכת פעילה. פתח את הכתובת, הוסף מניות לרשימת המעקב, ולחץ "סרוק הכל עכשיו" כדי
 לוודא שהכל עובד לפני שתחכה להרצה האוטומטית הבאה.
+
+## מוני והייפ
+
+שני העמודים הנוספים נגישים מהעמוד הראשי (כפתורים "🤖 מוני" ו-"🔥 הייפ" בפינה),
+או ישירות בכתובות `/moni.html` ו-`/hype.html`.
+
+- **מוני** (`/moni.html`) — הסוכן שהיה רץ קודם מקומית (`MONEY/server.js`), עכשיו כעמוד
+  בענן. מוגן בסיסמה משותפת אחת (`MONI_PASSWORD`, ראו למעלה) - אין משתמשים בפועל, רק
+  סיסמה שנשמרת בעוגייה בדפדפן שלך אחרי כניסה ראשונה. מפתח ה-Anthropic API (`ANTHROPIC_API_KEY`)
+  מוגדר פעם אחת ב-Vercel ולא צריך להזין אותו יותר בממשק.
+- **הייפ** (`/hype.html`) — כלי ניתוח הפונדמנטלים (`HYPE/server.js` הקודם), ללא הגנת
+  סיסמה (לא ביקשת עליו). רשימת המעקב שלו נשמרת בדפדפן שלך בלבד (`localStorage`), בדיוק
+  כמו בגרסה המקומית.
+- שני העמודים משתמשים ב-`DATABASE_URL` ו-`SEC_USER_AGENT` שכבר הגדרת, וב-`db/schema.sql`
+  המעודכן (טבלת `moni_state` חדשה) - אם הרצת את הסכימה לפני שהעמודים האלה נוספו, הרץ שוב
+  את כל תוכן `db/schema.sql` ב-SQL Editor (הפקודות בטוחות להרצה חוזרת, `create table if not exists`).
 
 ## בדיקה מהירה שהכל עובד
 
