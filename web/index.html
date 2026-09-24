@@ -58,6 +58,14 @@
   .card-row { display:flex; justify-content:space-between; font-size:12px; padding:3px 0; color:var(--muted); }
   .card-row b { color:var(--text); font-family:var(--mono); }
   .card-scenario { margin-top:8px; padding-top:8px; border-top:1px solid var(--border); font-size:12px; }
+
+  tr.ftmo-row td { background:rgba(56,182,255,.14); }
+  tr.ftmo-row:hover td { background:rgba(56,182,255,.22); }
+  .ftmo-badge { display:inline-block; margin-right:6px; font-size:9px; font-weight:700; color:var(--blue); border:1px solid var(--blue); border-radius:4px; padding:1px 4px; vertical-align:middle; }
+  .pin-btn { background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 8px; font-size:11px; cursor:pointer; font-family:inherit; }
+  .pin-btn:hover { border-color:var(--blue); color:var(--blue); }
+  .position-card { border-right:3px solid var(--yellow); }
+  .ftmo-card { background:rgba(56,182,255,.14); border-color:var(--blue); }
 </style>
 </head>
 <body>
@@ -83,6 +91,14 @@
 </div>
 
 <div class="panel">
+  <h2>📌 פוזיציות פתוחות</h2>
+  <div class="hint">מניות שסימנת כ"נכנסתי לפוזיציה" - הנתונים כאן קפואים מרגע הסימון ולא משתנים גם אם הסריקה היומית הבאה כבר לא מזהה תרחיש תקף.</div>
+  <div class="cards" id="positionsCards">
+    <div class="empty-state">טוען...</div>
+  </div>
+</div>
+
+<div class="panel">
   <h2>👁 רשימת מעקב</h2>
   <div class="hint">מניות שאתה עוקב אחריהן באופן קבוע - כולל נתונים פונדמנטליים (בסגנון הייפ) יחד עם התרחיש הטכני היומי.</div>
   <div class="watch-input-row">
@@ -96,6 +112,18 @@
 
 <script>
 const API = ''; // אותו דומיין - אם ה-API רץ בנפרד יש למלא כתובת בסיס כאן
+
+// רשימת מניות ה-Equities CFD האמריקאיות שניתן לסחור בהן ב-FTMO (נבדק ידנית מול
+// ftmo.com/en/symbols - קטגוריית Equities CFD - ב-2026-09-24). FTMO לא חושפת API
+// ציבורי לרשימה הזו, אז היא קבועה כאן וצריך לעדכן אותה ידנית אם FTMO משנה את המבחר.
+const FTMO_SYMBOLS = new Set([
+  'AAPL','AMZN','BA','BABA','BAC','CSCO','CVX','DIS','META','FDX','GE','GM','GOOG',
+  'IBM','INTC','JNJ','JPM','KO','MCD','MSFT','NFLX','NVDA','PFE','QCOM','RACE','T',
+  'TSLA','V','WMT','XOM','ZM','RTX','LMT','PLTR','AMD','AVGO','SBUX','MSTR','GME',
+  'NKE','ARM','SNOW','ASML','BRK.B','BRK-B',
+]);
+
+let lastCandidates = [];
 
 function fmt(n, digits) {
   if (n === null || n === undefined || Number.isNaN(n)) return '—';
@@ -120,6 +148,7 @@ async function loadData() {
     if (data.error) throw new Error(data.error);
     renderMeta(data);
     renderCandidates(data.candidates);
+    renderPositions(data.positions || []);
     renderWatchlist(data.watchlist);
     setStatus('עודכן ' + new Date().toLocaleTimeString('he-IL'));
   } catch (e) {
@@ -141,6 +170,7 @@ function renderMeta(data) {
 }
 
 function renderCandidates(rows) {
+  lastCandidates = rows || [];
   const wrap = document.getElementById('candidatesTableWrap');
   if (!rows || !rows.length) {
     wrap.innerHTML = '<div class="empty-state">אין תרחישים תקפים בסריקה האחרונה</div>';
@@ -148,11 +178,12 @@ function renderCandidates(rows) {
   }
   let html = `<table><thead><tr>
     <th>טיקר</th><th>שם</th><th>מחיר</th><th>כניסה</th><th>סטופ</th><th>יעד (+15%)</th>
-    <th>הוספה</th><th>VWAP מעוגן</th><th>שיא Wave A</th><th>לפני כמה ימים</th>
+    <th>הוספה</th><th>VWAP מעוגן</th><th>שיא Wave A</th><th>לפני כמה ימים</th><th></th>
   </tr></thead><tbody>`;
   for (const r of rows) {
-    html += `<tr>
-      <td class="sym">${r.symbol}</td>
+    const isFtmo = FTMO_SYMBOLS.has(r.symbol);
+    html += `<tr class="${isFtmo ? 'ftmo-row' : ''}">
+      <td class="sym">${isFtmo ? '<span class="ftmo-badge" title="ניתן לסחור ב-FTMO">FTMO</span>' : ''}${r.symbol}</td>
       <td>${r.name || ''}</td>
       <td class="num">$${fmt(r.current_close)}</td>
       <td class="num entry-val">$${fmt(r.entry)}</td>
@@ -162,10 +193,64 @@ function renderCandidates(rows) {
       <td class="num">$${fmt(r.anchored_vwap)}</td>
       <td class="num">$${fmt(r.wave_a_high)}</td>
       <td class="num">${r.wave_a_high_days_ago ?? '—'}</td>
+      <td><button class="pin-btn" onclick="markPosition('${r.symbol}')">📌 סמן פוזיציה</button></td>
     </tr>`;
   }
   html += '</tbody></table>';
   wrap.innerHTML = html;
+}
+
+function renderPositions(rows) {
+  const wrap = document.getElementById('positionsCards');
+  if (!rows || !rows.length) {
+    wrap.innerHTML = '<div class="empty-state">אין פוזיציות פתוחות מסומנות</div>';
+    return;
+  }
+  wrap.innerHTML = rows.map((r) => `
+    <div class="card position-card">
+      <div class="card-top">
+        <span class="card-sym">${r.symbol}</span>
+        <span class="card-price">$${fmt(r.current_close)}</span>
+        <button class="danger-ghost" onclick="closePosition(${r.id})" title="סגור פוזיציה">✕</button>
+      </div>
+      <div class="card-row"><span>כניסה</span><b class="entry-val">$${fmt(r.entry)}</b></div>
+      <div class="card-row"><span>סטופ</span><b class="stop-val">$${fmt(r.stop)}</b></div>
+      <div class="card-row"><span>יעד</span><b class="target-val">$${fmt(r.target)}</b></div>
+      <div class="card-row"><span>הוספה</span><b>$${fmt(r.add_level)}</b></div>
+      <div class="card-row"><span>נכנס בתאריך</span><b>${new Date(r.opened_at).toLocaleDateString('he-IL')}</b></div>
+    </div>`).join('');
+}
+
+async function markPosition(symbol) {
+  const r = lastCandidates.find((c) => c.symbol === symbol);
+  if (!r) return;
+  setStatus('מסמן פוזיציה ב-' + symbol + '...');
+  try {
+    const resp = await fetch(`${API}/api/positions`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        symbol: r.symbol, entry: r.entry, stop: r.stop, target: r.target,
+        add_level: r.add_level, anchored_vwap: r.anchored_vwap, wave_a_high: r.wave_a_high,
+        current_close: r.current_close,
+      })
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    await loadData();
+    setStatus('הפוזיציה ב-' + symbol + ' סומנה ונשמרה');
+  } catch (e) {
+    setStatus('שגיאה בסימון פוזיציה: ' + e.message);
+  }
+}
+
+async function closePosition(id) {
+  setStatus('סוגר פוזיציה...');
+  try {
+    await fetch(`${API}/api/positions?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await loadData();
+  } catch (e) {
+    setStatus('שגיאה בסגירת פוזיציה: ' + e.message);
+  }
 }
 
 function earningsClass(dateStr) {
@@ -192,9 +277,10 @@ function renderWatchlist(rows) {
       ? `<div class="scenario-valid">✅ תרחיש תקף: כניסה $${fmt(r.entry)} · סטופ $${fmt(r.stop)} · יעד $${fmt(r.target)}</div>`
       : `<div class="no-scenario">אין תרחיש כרגע</div>`;
     const earnCls = earningsClass(f.earningsDate);
-    return `<div class="card">
+    const isFtmo = FTMO_SYMBOLS.has(r.symbol);
+    return `<div class="card ${isFtmo ? 'ftmo-card' : ''}">
       <div class="card-top">
-        <span class="card-sym">${r.symbol}</span>
+        <span class="card-sym">${isFtmo ? '<span class="ftmo-badge" title="ניתן לסחור ב-FTMO">FTMO</span>' : ''}${r.symbol}</span>
         <span class="card-price">${f.price ? '$' + fmt(f.price) : (r.current_close ? '$' + fmt(r.current_close) : '—')}</span>
         <button class="danger-ghost" onclick="removeFromWatchlist('${r.symbol}')" title="הסר">✕</button>
       </div>
