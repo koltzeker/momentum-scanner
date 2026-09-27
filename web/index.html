@@ -186,7 +186,7 @@ function renderCandidates(rows) {
     return;
   }
   let html = `<table><thead><tr>
-    <th>טיקר</th><th>שם</th><th>מחיר</th><th>כניסה</th><th>סטופ</th><th>יעד משוער (מינ' 15%)</th>
+    <th>טיקר</th><th>שם</th><th>ציון</th><th>מחיר</th><th>כניסה</th><th>סטופ</th><th>יעד משוער (מינ' 15%)</th>
     <th>הוספה</th><th>VWAP מעוגן</th><th>שיא Wave A</th><th>לפני כמה ימים</th><th></th>
   </tr></thead><tbody>`;
   for (const r of rows) {
@@ -195,6 +195,7 @@ function renderCandidates(rows) {
     html += `<tr class="${isFtmo ? 'ftmo-row' : ''}">
       <td class="sym">${isFtmo ? '<span class="ftmo-badge" title="ניתן לסחור ב-FTMO">FTMO</span>' : ''}${r.symbol}</td>
       <td>${r.name || ''}</td>
+      <td class="num">${scoreCellHtml(r)}</td>
       <td class="num">$${fmt(r.current_close)}</td>
       <td class="num entry-val">$${fmt(r.entry)}</td>
       <td class="num stop-val">$${fmt(r.stop)}</td>
@@ -208,6 +209,21 @@ function renderCandidates(rows) {
   }
   html += '</tbody></table>';
   wrap.innerHTML = html;
+}
+
+// עמודת "ציון" בטבלת המועמדים: ציון משולב (טכני + פונדמנטלי) + tooltip עם הפירוט, ותג
+// "⭐" למניה שסומנה high_quality (חזקה גם טכנית וגם פונדמנטלית - ראו run.js לספים).
+function scoreCellHtml(r) {
+  if (r.combined_score === null || r.combined_score === undefined) {
+    return '<span style="color:var(--muted)">—</span>';
+  }
+  const tooltip = `ציון טכני (איכות התרחיש): ${fmt(r.quality_score, 0)}` +
+    (r.fundamentals_score !== null && r.fundamentals_score !== undefined
+      ? `\nציון פונדמנטלי (בסגנון הייפ): ${fmt(r.fundamentals_score, 0)}`
+      : '\nציון פונדמנטלי: לא זמין') +
+    `\nציון משולב: ${fmt(r.combined_score, 0)}`;
+  const star = r.high_quality ? ' ⭐' : '';
+  return `<span title="${tooltip}" style="cursor:help;font-weight:700">${fmt(r.combined_score, 0)}${star}</span>`;
 }
 
 function renderPositions(rows) {
