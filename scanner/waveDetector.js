@@ -17,6 +17,7 @@ const DEFAULTS = {
   targetPct: 15.0,    // יעד מינימלי (%) - כמו i_target
   lookback: 14,       // ימים אחורה ל-Daily - כמו i_lookback
   waveBBars: 2,       // מינימום נרות לגל B - כמו i_waveBBars
+  targetLookbackDays: 130, // טווח חיפוש התנגדות טכנית ליעד (~6 חודשי מסחר) - ראו הערה ב-findTechnicalTarget
 };
 
 function sma(values, period) {
@@ -31,19 +32,29 @@ function sma(values, period) {
  * שרירותית. "פיבוט" = נר שהשיא שלו גבוה מהשיא של pivotSpan נרות משני הצדדים (שיא
  * מקומי מאומת, לא רק הערך הכי גבוה בטווח). בוחרים את הפיבוט הקרוב ביותר (הנמוך
  * ביותר מבין אלו שמעל הרף) - זו ההתנגדות הראשונה שהמניה צפויה להיתקל בה מעל
- * המינימום, ולכן היעד הסביר והקרוב ביותר. מחפשים על פני כל ההיסטוריה הזמינה (עד שנה).
+ * המינימום, ולכן היעד הסביר והקרוב ביותר.
+ *
+ * lookbackDays מגביל את החיפוש לחלון האחרון (ברירת מחדל ~6 חודשי מסחר, ראו
+ * DEFAULTS.targetLookbackDays) במקום כל השנה - לבקשת רון, כדי שרמה מ-2025 (למשל)
+ * לא תיחשב "יעד" למניה שכבר לא קרובה אליה. חשוב להבין את ההשפעה בפועל: חלון קצר
+ * יותר מקטין את הסיכוי למצוא בכלל פיבוט מעל הרף (פחות נרות = פחות מועמדים), כך
+ * שבמניות יציבות/איטיות (כמו רוב ה-Large Cap שעוברות את הסינון היום) התוצאה
+ * הנפוצה עשויה עדיין להיות "אין רמה טכנית" - ואז חוזרים ליעד המינימלי השטוח (15%).
+ * זו לא תקלה: היא אומרת בפירוש שלמניה הזו אין בהיסטוריה הקרובה רמה שמעל 15%
+ * מהכניסה, מידע אמיתי כשלעצמו.
  */
-function findTechnicalTarget(bars, minTarget) {
+function findTechnicalTarget(bars, minTarget, lookbackDays) {
   if (minTarget === null) return null;
-  const n = bars.length;
+  const searchBars = lookbackDays ? bars.slice(-lookbackDays) : bars;
+  const n = searchBars.length;
   const pivotSpan = 3;
   let best = null;
   for (let i = pivotSpan; i < n - pivotSpan; i++) {
-    const h = bars[i].high;
+    const h = searchBars[i].high;
     if (h <= minTarget) continue;
     let isPivot = true;
     for (let k = 1; k <= pivotSpan; k++) {
-      if (bars[i - k].high > h || bars[i + k].high > h) {
+      if (searchBars[i - k].high > h || searchBars[i + k].high > h) {
         isPivot = false;
         break;
       }
@@ -51,6 +62,27 @@ function findTechnicalTarget(bars, minTarget) {
     if (isPivot && (best === null || h < best)) best = h;
   }
   return best;
+}
+
+/**
+ * ציון "איכות" לתרחיש טכני תקף - לצורך דירוג מועמדי הסריקה (מהגבוה לנמוך), לפי
+ * בקשת רון. לא נוסחה "רשמית" - היוריסטיקה שקופה שאפשר לכייל אחרי שרואים תוצאות
+ * אמיתיות במשך כמה ימים:
+ *  - יחס סיכוי/סיכון (עד 50 נק', תקרה ב-1:5) - הגורם המרכזי.
+ *  - אורך רצף העלייה של גל A (עד 18 נק', תקרה ב-6 נרות) - כמה "מאומת" הגל.
+ *  - קרבת המחיר הנוכחי לנקודת הכניסה (עד 20 נק', יורד ככל שרחוק ממנה) - כמה
+ *    "טרי"/רלוונטי התרחיש עכשיו, לעומת נר שכבר התרחק הרבה מהכניסה.
+ *  - בונוס 10 נק' אם היעד המוצג הוא רמת התנגדות טכנית אמיתית (לא 15% שטוח).
+ */
+function computeQualityScore(setup) {
+  if (!setup || !setup.valid) return null;
+  const rr = (setup.target - setup.entry) / (setup.entry - setup.stop);
+  const rrScore = Math.min(rr, 5) * 10;
+  const streakScore = Math.min(setup.waveARisingStreakLen || 0, 6) * 3;
+  const entryGapPct = (Math.abs(setup.currentClose - setup.entry) / setup.entry) * 100;
+  const proximityScore = Math.max(0, 20 - entryGapPct * 4);
+  const technicalTargetBonus = setup.targetIsTechnical ? 10 : 0;
+  return +(rrScore + streakScore + proximityScore + technicalTargetBonus).toFixed(1);
 }
 
 /**
@@ -171,7 +203,7 @@ function detectDailySetup(bars, opts = {}) {
   // ── יעד: 15% הוא רף מינימלי, לא היעד עצמו - משתדרג לרמה טכנית אמיתית (שיא פיבוט
   // קודם בגרף) כשקיימת התנגדות כזו מעל הרף, לפי בקשה מפורשת של רון ────────────────
   const minTarget = bValid ? entry * (1 + cfg.targetPct / 100) : null;
-  const techTarget = bValid ? findTechnicalTarget(bars, minTarget) : null;
+  const techTarget = bValid ? findTechnicalTarget(bars, minTarget, cfg.targetLookbackDays) : null;
   const target = techTarget !== null ? techTarget : minTarget;
   const targetIsTechnical = techTarget !== null;
   const addLevel = bValid ? wAHigh + cfg.stopBuf : null;
@@ -226,4 +258,4 @@ function detectDailySetup(bars, opts = {}) {
   };
 }
 
-module.exports = { detectDailySetup, DEFAULTS };
+module.exports = { detectDailySetup, computeQualityScore, DEFAULTS };
