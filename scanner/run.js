@@ -14,12 +14,28 @@
 
 const db = require('./db');
 const { fetchDailyBars } = require('./dataFetch');
-const { detectDailySetup } = require('./waveDetector');
-const { fetchFundamentalsSnapshot, sleep } = require('./fundamentals');
+const { detectDailySetup, computeQualityScore } = require('./waveDetector');
+const { fetchFundamentalsSnapshot, fetchFinvizQuote, buildAnalysis, sleep } = require('./fundamentals');
 
 const YAHOO_DELAY_MS = Number(process.env.YAHOO_DELAY_MS || 300);
 const FUNDAMENTALS_DELAY_MS = Number(process.env.FUNDAMENTALS_DELAY_MS || 600);
 const SEC_USER_AGENT = process.env.SEC_USER_AGENT || null;
+
+// ספים ראשוניים (משוערים, ניתנים לכיוונון) לתיוג "⭐ איכות גבוהה" - תרחיש טכני חזק
+// (quality_score, 0-100 בערך) יחד עם פונדמנטלס חיובי (fundamentals_score של הייפ, לרוב
+// טווח שלילי-עד-כמה-עשרות). ראו README - הערכים האלה הערכה ראשונית, לא נוסחה מדעית.
+const QUALITY_SCORE_THRESHOLD = 60;
+const FUNDAMENTALS_SCORE_THRESHOLD = 40;
+
+// דירוג פונדמנטלי "בסגנון הייפ" לכל תרחיש טכני תקף (לפי בקשת רון - "כל התרחישים התקפים
+// של היום", לא רק top-N). משתמשים רק ב-Finviz (fetchFinvizQuote+buildAnalysis) ולא ב-
+// fetchFundamentalsSnapshot המלא (שמוסיף גם stockanalysis.com + SEC EDGAR) - כדי לא
+// להכפיל משמעותית את זמן הריצה/סיכון ה-rate-limit על כל התרחישים התקפים, כשה"ניקוד"
+// עצמו (score) נגזר רק מנתוני Finviz בין כה וכה (ראו buildAnalysis).
+async function scoreFundamentals(symbol) {
+  const parsed = await fetchFinvizQuote(symbol);
+  return buildAnalysis(symbol, parsed);
+}
 
 async function scanSymbol(symbol, scanDate) {
   const fetched = await fetchDailyBars(symbol, '1y');
@@ -28,8 +44,37 @@ async function scanSymbol(symbol, scanDate) {
   }
   await db.saveDailyBars(symbol, fetched.bars);
   const setup = detectDailySetup(fetched.bars, {});
-  await db.saveMomentumSetup(symbol, scanDate, setup);
-  return { symbol, ok: true, valid: setup.valid };
+
+  let qualityScore = null;
+  let fundamentalsScore = null;
+  let fundamentalsData = null;
+  let combinedScore = null;
+  let highQuality = false;
+
+  if (setup.valid) {
+    qualityScore = computeQualityScore(setup);
+    try {
+      fundamentalsData = await scoreFundamentals(symbol);
+      fundamentalsScore = typeof fundamentalsData.score === 'number' ? fundamentalsData.score : null;
+    } catch (e) {
+      // כישלון פונדמנטלס (Finviz חסום/לא זמין וכו') לא אמור להפיל את התרחיש הטכני -
+      // פשוט לא יהיה ניקוד פונדמנטלי משלים לטיקר הזה היום.
+      fundamentalsScore = null;
+    }
+    combinedScore = fundamentalsScore !== null ? qualityScore + fundamentalsScore * 0.3 : qualityScore;
+    highQuality = qualityScore !== null && qualityScore >= QUALITY_SCORE_THRESHOLD &&
+      fundamentalsScore !== null && fundamentalsScore >= FUNDAMENTALS_SCORE_THRESHOLD;
+    await sleep(FUNDAMENTALS_DELAY_MS);
+  }
+
+  await db.saveMomentumSetup(symbol, scanDate, setup, {
+    qualityScore,
+    fundamentalsScore,
+    fundamentalsData,
+    combinedScore,
+    highQuality,
+  });
+  return { symbol, ok: true, valid: setup.valid, highQuality };
 }
 
 async function runDailyScan() {
@@ -52,7 +97,7 @@ async function runDailyScan() {
         if (!r.ok) failCount++;
         else if (r.valid) {
           validCount++;
-          console.log(`  ✅ ${symbol}: תרחיש תקף`);
+          console.log(`  ✅ ${symbol}: תרחיש תקף${r.highQuality ? ' ⭐ איכות גבוהה' : ''}`);
         }
       } catch (e) {
         failCount++;
