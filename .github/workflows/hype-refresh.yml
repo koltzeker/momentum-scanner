@@ -1,0 +1,26 @@
+name: Daily Hype Watchlist Refresh
+
+on:
+  schedule:
+    # 08:00 שעון ישראל (IST/IDT) = 05:00-06:00 UTC בקירוב, לפני פתיחת המסחר בארה"ב - כדי
+    # שהנתונים הפונדמנטליים (P/E, מחיר הוגן וכו') יהיו מוכנים ומעודכנים כבר בבוקר.
+    - cron: '0 5 * * *'
+  workflow_dispatch: {} # מאפשר הרצה ידנית מה-GitHub UI/API בעת הצורך
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm install
+
+      - name: רענון רשימת המעקב של הייפ
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run hype-refresh
