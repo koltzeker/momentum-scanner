@@ -42,6 +42,16 @@ create table if not exists momentum_setups (
 );
 create index if not exists idx_momentum_setups_scan_date on momentum_setups(scan_date desc, valid desc);
 
+-- ניקוד איכות התרחיש הטכני (0-100 בערך, ראו computeQualityScore ב-waveDetector.js) +
+-- ניקוד פונדמנטלי "בסגנון הייפ" (score מ-buildAnalysis, ראו fundamentals.js) לכל תרחיש
+-- תקף, כדי לדרג את "מועמדים היום" לפי איכות במקום סתם לפי סדר א"ב, ולסמן "⭐" למניה
+-- שחזקה גם טכנית וגם פונדמנטלית (ראו run.js - הספים הראשוניים שם ניתנים לכיוונון).
+alter table momentum_setups add column if not exists quality_score numeric;
+alter table momentum_setups add column if not exists fundamentals_score numeric;
+alter table momentum_setups add column if not exists fundamentals_data jsonb;
+alter table momentum_setups add column if not exists combined_score numeric;
+alter table momentum_setups add column if not exists high_quality boolean not null default false;
+
 -- רשימת המעקב האישית של רון (מוזנת/מנוהלת דרך הפרונט-אנד).
 create table if not exists watchlist (
   symbol      text primary key references tickers(symbol) on delete cascade,
@@ -97,4 +107,19 @@ create table if not exists moni_state (
   data        jsonb not null default '{}'::jsonb,
   updated_at  timestamptz not null default now(),
   constraint moni_state_singleton check (id = 1)
+);
+
+-- רשימת המעקב של עמוד "הייפ" (/hype.html) - עברה מ-localStorage בדפדפן למאגר משותף
+-- כדי לאפשר רענון יומי אוטומטי בצד שרת (GitHub Actions), במקום רענון רק כשהדפדפן פתוח.
+create table if not exists hype_watchlist (
+  symbol      text primary key,
+  added_at    timestamptz not null default now()
+);
+
+-- תוצאת הניתוח האחרונה (buildAnalysis) לכל טיקר ברשימת המעקב של הייפ - מתעדכן פעם ביום
+-- ע"י scanner/hypeRefresh.js, כדי שהעמוד יציג נתונים שמורים במקום לחכות לרענון ידני.
+create table if not exists hype_snapshot (
+  symbol        text primary key references hype_watchlist(symbol) on delete cascade,
+  data          jsonb not null,   -- האובייקט שמחזיר buildAnalysis
+  fetched_at    timestamptz not null default now()
 );
