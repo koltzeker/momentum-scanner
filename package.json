@@ -6,6 +6,7 @@
   "main": "scanner/run.js",
   "scripts": {
     "scan": "node scanner/run.js",
+    "hype-refresh": "node scanner/hypeRefresh.js",
     "update-universe": "node scanner/updateUniverse.js",
     "test": "node scanner/waveDetector.test.js"
   },
