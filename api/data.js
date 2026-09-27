@@ -40,7 +40,7 @@ module.exports = async (req, res) => {
           `select ms.*, t.name from momentum_setups ms
            join tickers t on t.symbol = ms.symbol
            where ms.scan_date = $1 and ms.valid = true
-           order by ms.symbol asc`,
+           order by ms.combined_score desc nulls last, ms.symbol asc`,
           [scanDate]
         )
       : { rows: [] };
