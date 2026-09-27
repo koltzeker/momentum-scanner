@@ -204,11 +204,10 @@
   • <b>ניקוד</b> — נוסחה שבניתי, לא סטנדרט מקצועי: אפסייד ממוצע(%) + (צמיחה-5Y &times; 0.3) + בונוס 5 אם 0&lt;P/E&lt;40. <u>קנס 15</u> אם P/E שלילי <u>או חסר</u> (חברה לא רווחית/בלי נתון). <u>קנס 10</u> אם אין אומדן צמיחה ל-5 שנים. <u>קנס 10 נוסף</u> אם יש ⚡ מחלוקת מודלים. תוספת/הפחתה קטנה (&times;0.05) לפי פער ה-Forward P/E. סימן ⚠ ליד הניקוד מעיד שחלק מהנתונים חסרים ושהציון לא באמת מבוסס על תמונה מלאה — עברו עם העכבר על הסימן לראות אילו שדות חסרים.<br>
   • <b>גרף הכנסות/הוצאות ואופציות</b> (בלחיצה על "📊 פרטים") — הכנסות/הוצאות היסטוריות מגיעות מ-stockanalysis.com (לא מפינויז), ונתוני האופציות (Put/Call OI ו-Volume) מ-Yahoo Finance, רק לתאריך הפקיעה הקרוב ביותר. שני המקורות האלה חיצוניים לפינויז וייתכן שישברו אם המבנה שלהם משתנה - יש לינק למקור בכל פאנל לאימות ידני.<br>
   • <b>נתוני SEC</b> (בלחיצה על "📄 נתוני SEC") — הכנסות/הוצאות תפעול/רווח נקי, 8 תקופות אחרונות, ישירות מ-SEC EDGAR (מקור ממשלתי רשמי, לא scraping של אתר צד ג') + לינק לדוח המקורי (10-K/10-Q). זה חינמי ולא דורש שום הגדרה.<br>
-  הנתונים תלויים בזמינות ובדיוק Finviz וייתכנו שדות חסרים למניות מסוימות. רשימת המעקב נשמרת בדפדפן שלך (לא בשרת) ותישאר גם אחרי סגירה/רענון של הדף.
+  הנתונים תלויים בזמינות ובדיוק Finviz וייתכנו שדות חסרים למניות מסוימות. רשימת המעקב נשמרת במאגר משותף בשרת (לא רק בדפדפן) ומתעדכנת אוטומטית פעם ביום.
 </div>
 
 <script>
-const STORAGE_KEY = 'hype_watchlist';
 const addBtn = document.getElementById('addBtn');
 const tickerInput = document.getElementById('tickerInput');
 const watchlistEl = document.getElementById('watchlist');
@@ -219,22 +218,22 @@ const errorsEl = document.getElementById('errors');
 const tbody = document.getElementById('resultsBody');
 let lastResults = [];
 
-// ---------- watchlist persistence (localStorage, per-browser) ----------
+// ---------- watchlist persistence (מאגר משותף בשרת - Postgres, ראו api/hype.js) ----------
+// עברה מ-localStorage בדפדפן למאגר משותף כדי שרענון יומי אוטומטי בצד שרת
+// (scanner/hypeRefresh.js) יעדכן את הנתונים גם כשהדפדפן סגור.
 
-function loadWatchlist() {
+let watchlist = [];
+
+async function loadWatchlist() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : ['AAPL', 'MSFT', 'NVDA'];
+    const resp = await fetch('/api/hype?action=watchlist');
+    const data = await resp.json();
+    watchlist = (data.watchlist || []).map((w) => w.symbol);
   } catch {
-    return ['AAPL', 'MSFT', 'NVDA'];
+    watchlist = [];
   }
+  renderWatchlist();
 }
-
-function saveWatchlist(list) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-}
-
-let watchlist = loadWatchlist();
 
 function renderWatchlist() {
   watchlistEl.innerHTML = '';
@@ -250,32 +249,44 @@ function renderWatchlist() {
   });
 }
 
-watchlistEl.addEventListener('click', (e) => {
+watchlistEl.addEventListener('click', async (e) => {
   if (e.target.classList.contains('remove')) {
     const t = e.target.dataset.ticker;
     watchlist = watchlist.filter((x) => x !== t);
-    saveWatchlist(watchlist);
     renderWatchlist();
+    try {
+      await fetch(`/api/hype?action=watchlist&symbol=${encodeURIComponent(t)}`, { method: 'DELETE' });
+    } catch (err) {
+      errorsEl.textContent = 'שגיאה בהסרת ' + t + ': ' + err.message;
+    }
   }
 });
 
-addBtn.addEventListener('click', () => {
+addBtn.addEventListener('click', async () => {
   const raw = tickerInput.value;
   const newTickers = raw.split(/[\s,]+/).map((t) => t.trim().toUpperCase()).filter(Boolean);
   if (!newTickers.length) return;
-  newTickers.forEach((t) => {
-    if (!watchlist.includes(t)) watchlist.push(t);
-  });
-  saveWatchlist(watchlist);
-  renderWatchlist();
   tickerInput.value = '';
+  const toAdd = newTickers.filter((t) => !watchlist.includes(t));
+  toAdd.forEach((t) => watchlist.push(t));
+  renderWatchlist();
+  for (const t of toAdd) {
+    try {
+      await fetch('/api/hype?action=watchlist', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: t })
+      });
+    } catch (err) {
+      errorsEl.textContent = 'שגיאה בהוספת ' + t + ': ' + err.message;
+    }
+  }
+  // רענון חי מיידי לרשימה המעודכנת, כדי לראות נתונים על הטיקרים החדשים בלי לחכות
+  if (toAdd.length) analyze();
 });
 
 tickerInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') addBtn.click();
 });
-
-renderWatchlist();
 
 // ---------- formatting helpers ----------
 
@@ -614,6 +625,36 @@ async function analyze() {
 
 analyzeBtn.addEventListener('click', analyze);
 refreshTopBtn.addEventListener('click', analyze);
+
+// ---------- טעינת תמונת המצב השמורה (מהרענון היומי האוטומטי) בעת פתיחת העמוד ----------
+// כדי שיוצגו נתונים מיד, בלי לחכות ללחיצה ידנית על "רענן" - ראו scanner/hypeRefresh.js.
+async function loadCachedSnapshot() {
+  try {
+    const resp = await fetch('/api/hype?action=snapshot');
+    const data = await resp.json();
+    const rows = (data.watchlist || []).filter((w) => w.data);
+    if (!rows.length) return;
+    lastResults = rows.map((w) => w.data);
+    render(lastResults);
+    const fetchedAt = rows
+      .map((w) => w.fetched_at)
+      .filter(Boolean)
+      .sort()
+      .pop();
+    statusEl.textContent = fetchedAt
+      ? `הוצגו ${lastResults.length} מניות (נתונים שמורים, עודכנו ${new Date(fetchedAt).toLocaleString('he-IL')}) - לחצו "רענן" לנתונים חיים`
+      : `הוצגו ${lastResults.length} מניות (נתונים שמורים)`;
+  } catch (err) {
+    // כישלון בטעינת הנתונים השמורים לא אמור למנוע מהמשתמש להשתמש בכפתור "רענן" הרגיל.
+  }
+}
+
+async function init() {
+  await loadWatchlist();
+  await loadCachedSnapshot();
+}
+
+init();
 </script>
 </body>
 </html>
