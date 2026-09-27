@@ -16,11 +16,65 @@ const {
   sleep,
 } = require('../scanner/fundamentals');
 const { fetchOptionsSummary } = require('../scanner/yahooOptions');
+const db = require('../scanner/db');
 
 module.exports = async (req, res) => {
   const action = (req.query && req.query.action) || '';
 
   try {
+    // רשימת המעקב של הייפ - הועברה מ-localStorage בדפדפן למאגר משותף (Postgres) כדי
+    // שרענון יומי בצד שרת (scanner/hypeRefresh.js) יוכל לעדכן אותה בלי תלות בדפדפן פתוח.
+    if (action === 'watchlist') {
+      if (req.method === 'GET') {
+        const rows = await db.getHypeWatchlist();
+        res.status(200).json({ watchlist: rows });
+        return;
+      }
+      if (req.method === 'POST') {
+        const symbol = String(req.body?.symbol || '').trim().toUpperCase();
+        if (!symbol) {
+          res.status(400).json({ error: 'טיקר חסר' });
+          return;
+        }
+        await db.addToHypeWatchlist(symbol);
+        // רענון מיידי כדי שלא יצטרך לחכות לרענון היומי כדי לראות נתונים על הטיקר החדש.
+        try {
+          const parsed = await fetchFinvizQuote(symbol);
+          const analysis = buildAnalysis(symbol, parsed);
+          await db.saveHypeSnapshot(symbol, analysis);
+        } catch (err) {
+          // אם הרענון המיידי נכשל (למשל Finviz חסום כרגע) - הטיקר עדיין נוסף לרשימה,
+          // ופשוט יקבל נתונים ברענון היומי הבא.
+        }
+        res.status(200).json({ ok: true });
+        return;
+      }
+      if (req.method === 'DELETE') {
+        const symbol = String(req.query.symbol || '').trim().toUpperCase();
+        if (!symbol) {
+          res.status(400).json({ error: 'טיקר חסר' });
+          return;
+        }
+        await db.removeFromHypeWatchlist(symbol);
+        res.status(200).json({ ok: true });
+        return;
+      }
+      res.status(405).json({ error: 'method not allowed' });
+      return;
+    }
+
+    // תמונת המצב האחרונה שנשמרה לרשימת המעקב (מהרענון היומי) - נטענת בטעינת העמוד כדי
+    // להציג נתונים שמורים מיד, בלי לחכות לרענון ידני שמריץ ניתוח חי לכל הרשימה.
+    if (action === 'snapshot') {
+      if (req.method !== 'GET') {
+        res.status(405).json({ error: 'method not allowed' });
+        return;
+      }
+      const rows = await db.getHypeSnapshots();
+      res.status(200).json({ watchlist: rows });
+      return;
+    }
+
     if (action === 'analyze') {
       if (req.method !== 'POST') {
         res.status(405).json({ error: 'method not allowed' });
