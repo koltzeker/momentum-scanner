@@ -28,7 +28,7 @@ async function upsertTickers(tickers) {
   const client = await p.connect();
   try {
     await client.query('begin');
-    const chunkSize = 200; // כמה שורות בכל INSERT מרובה-שורות (נמנעים מאות round-trips נפרדים)
+    const chunkSize = 200; // כמה שורות בכל INSERT מרובה-שורות (נמנעים ממאות round-trips נפרדים)
     for (let i = 0; i < tickers.length; i += chunkSize) {
       const chunk = tickers.slice(i, i + chunkSize);
       const values = [];
@@ -137,16 +137,28 @@ async function getDailyBars(symbol, limit = 400) {
   }));
 }
 
-async function saveMomentumSetup(symbol, scanDate, setup) {
+// scoring - אובייקט אופציונלי { qualityScore, fundamentalsScore, fundamentalsData, combinedScore,
+// highQuality } שמחושב ב-run.js רק לתרחישים תקפים (ראו scanSymbol) - לצורך דירוג "מועמדים היום"
+// לפי איכות במקום סתם לפי סדר א"ב, ולסימון "⭐" למניה שגם הטכני וגם הפונדמנטלי שלה חזקים.
+async function saveMomentumSetup(symbol, scanDate, setup, scoring = {}) {
   const p = getPool();
+  const {
+    qualityScore = null,
+    fundamentalsScore = null,
+    fundamentalsData = null,
+    combinedScore = null,
+    highQuality = false,
+  } = scoring;
   await p.query(
     `insert into momentum_setups
       (symbol, scan_date, valid, reason, current_close, wave_a_high, wave_a_high_days_ago,
-       wave_b_low, entry, stop, stop_hist, target, add_level, anchored_vwap)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       wave_b_low, entry, stop, stop_hist, target, add_level, anchored_vwap,
+       quality_score, fundamentals_score, fundamentals_data, combined_score, high_quality)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
      on conflict (symbol, scan_date) do update set
        valid=$3, reason=$4, current_close=$5, wave_a_high=$6, wave_a_high_days_ago=$7,
-       wave_b_low=$8, entry=$9, stop=$10, stop_hist=$11, target=$12, add_level=$13, anchored_vwap=$14`,
+       wave_b_low=$8, entry=$9, stop=$10, stop_hist=$11, target=$12, add_level=$13, anchored_vwap=$14,
+       quality_score=$15, fundamentals_score=$16, fundamentals_data=$17, combined_score=$18, high_quality=$19`,
     [
       symbol,
       scanDate,
@@ -162,8 +174,53 @@ async function saveMomentumSetup(symbol, scanDate, setup) {
       setup.target,
       setup.addLevel,
       setup.anchoredVwap,
+      qualityScore,
+      fundamentalsScore,
+      fundamentalsData ? JSON.stringify(fundamentalsData) : null,
+      combinedScore,
+      highQuality,
     ]
   );
+}
+
+// רשימת המעקב של עמוד "הייפ" (/hype.html) - נפרדת מ-watchlist (רשימת המעקב של המומנטום
+// היומי/מוני), כי אלה שתי רשימות עצמאיות שרון מנהל בנפרד (ראו hype_watchlist בסכמה).
+async function getHypeWatchlist() {
+  const p = getPool();
+  const { rows } = await p.query('select symbol, added_at from hype_watchlist order by added_at desc');
+  return rows;
+}
+
+async function addToHypeWatchlist(symbol) {
+  const p = getPool();
+  await p.query('insert into hype_watchlist (symbol) values ($1) on conflict (symbol) do nothing', [symbol]);
+}
+
+async function removeFromHypeWatchlist(symbol) {
+  const p = getPool();
+  await p.query('delete from hype_watchlist where symbol=$1', [symbol]);
+}
+
+// תוצאת buildAnalysis האחרונה שנשמרה לכל טיקר ברשימת המעקב של הייפ - מתעדכן פעם ביום
+// ע"י scanner/hypeRefresh.js, וגם באופן מיידי כשמוסיפים טיקר חדש (ראו api/hype.js).
+async function saveHypeSnapshot(symbol, data) {
+  const p = getPool();
+  await p.query(
+    `insert into hype_snapshot (symbol, data, fetched_at) values ($1,$2, now())
+     on conflict (symbol) do update set data=$2, fetched_at=now()`,
+    [symbol, data]
+  );
+}
+
+async function getHypeSnapshots() {
+  const p = getPool();
+  const { rows } = await p.query(
+    `select w.symbol, w.added_at, s.data, s.fetched_at
+     from hype_watchlist w
+     left join hype_snapshot s on s.symbol = w.symbol
+     order by w.added_at desc`
+  );
+  return rows;
 }
 
 async function saveFundamentalsSnapshot(symbol, data) {
@@ -204,6 +261,11 @@ module.exports = {
   getDailyBars,
   saveMomentumSetup,
   saveFundamentalsSnapshot,
+  getHypeWatchlist,
+  addToHypeWatchlist,
+  removeFromHypeWatchlist,
+  saveHypeSnapshot,
+  getHypeSnapshots,
   logScanRun,
   finishScanRun,
 };
