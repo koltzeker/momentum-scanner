@@ -92,14 +92,19 @@
   .empty-watchlist { color: var(--muted); font-size: 13px; }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { padding: 8px 10px; text-align: center; border-bottom: 1px solid var(--border); white-space: nowrap; }
-  th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel); cursor: pointer; }
+  th, td { padding: 6px 9px; text-align: center; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel); cursor: pointer; z-index: 1; }
   tr:hover td { background: var(--panel2); }
   td.ticker { font-weight: 700; text-align: right; }
   .up { color: var(--green); font-weight: 600; }
   .down { color: var(--red); font-weight: 600; }
   .score-cell { font-weight: 700; }
-  .table-wrap { overflow-x: auto; }
+  .score-missing { display: block; color: var(--yellow); font-size: 10px; font-weight: 400; white-space: normal; max-width: 160px; margin-top: 2px; }
+  /* התיבה הממשית שגוללת - חוסמת גובה כדי שה-sticky header בפועל "יידבק" בגלילה
+     (קודם לא היה לה גובה מוגבל, אז העמוד עצמו גלל והכותרות נעלמו). */
+  .table-scroll { overflow: auto; max-height: 65vh; border: 1px solid var(--border); border-radius: 8px; }
+  .filter-row { margin-bottom: 10px; }
+  .filter-count { color: var(--muted); font-size: 13px; }
 
   .earnings-green { background: rgba(61,220,132,0.18); color: var(--green); font-weight: 700; border-radius: 6px; }
   .earnings-red { background: rgba(255,92,92,0.15); color: var(--red); font-weight: 700; border-radius: 6px; }
@@ -153,7 +158,12 @@
   <div class="errors" id="errors"></div>
 </div>
 
-<div class="panel table-wrap">
+<div class="panel">
+  <div class="row filter-row">
+    <input type="text" id="filterInput" placeholder="🔍 סינון לפי טיקר או שם חברה...">
+    <span class="filter-count" id="filterCount"></span>
+  </div>
+  <div class="table-scroll">
   <table id="resultsTable">
     <thead>
       <tr>
@@ -183,6 +193,7 @@
     </thead>
     <tbody id="resultsBody"></tbody>
   </table>
+  </div>
   <div class="legend">
     <span><span class="dot" style="background:var(--green)"></span>דוח בשבועיים הקרובים - שווה להתייחס</span>
     <span><span class="dot" style="background:var(--red)"></span>תאריך הדוח חלף לפני יותר משבוע - כנראה לא מעודכן, אל תתייחס</span>
@@ -201,7 +212,7 @@
   • <b>⚡ מחלוקת מודלים</b> — אם יעד האנליסטים והמחיר ההוגן העצמי חלוקים ביניהם ביותר מ-40% (כמו שקרה עם GOOGL), זה מסומן באייקון ⚡ ליד "מחיר הוגן (עצמי)", והניקוד מקבל קנס -10 - כי פער קיצוני בין שני מודלים עצמאיים מעיד שלפחות אחד מהם לא אמין כאן, לא שיש הזדמנות כפולה.<br>
   • <b>P/E היסטורי של המניה עצמה</b> (בפאנל "📊 פרטים", טור שלישי חדש) — גישה שונה לגמרי: במקום להשוות לצמיחה, משווה למכפיל שהמניה <u>עצמה</u> נסחרה בו בעבר (ממוצע P/E רבעוני, מ-stockanalysis.com). לא נכנס לניקוד הראשי כי זו קריאת רשת נוספת שנטענת רק בלחיצה, אחרי טעינת הטבלה.<br>
   • <b>תחזית שנה — הסבר מלא:</b> העמודה "צמיחה שנה%" (שדה "EPS next Y" בפינויז) היא אחוז הצמיחה החזוי ברווח למניה (EPS) בשנה הקרובה, לפי הערכת אנליסטים. הנחת היסוד: אם המכפיל (P/E) שהשוק משלם היום נשאר קבוע, ומחיר המניה = P/E &times; EPS, אז כשה-EPS גדל ב-X%, גם המחיר צריך לגדול פחות או יותר באותו קצב X% (כי המכפיל לא משתנה בהנחה שלנו). לכן: <code>תחזית שנה = מחיר נוכחי &times; (1 + צמיחה שנה% / 100)</code>. זו לא תחזית "אמיתית" של אנליסט — זו הרחבה פשוטה של קצב הצמיחה החזוי קדימה, בהנחה שהשוק ימשיך להעריך את המניה באותו יחס בדיוק. אם המכפיל בפועל יעלה או ירד (למשל כי הסנטימנט על המניה משתנה), התחזית הזו לא תתממש.<br>
-  • <b>ניקוד</b> — נוסחה שבניתי, לא סטנדרט מקצועי: אפסייד ממוצע(%) + (צמיחה-5Y &times; 0.3) + בונוס 5 אם 0&lt;P/E&lt;40. <u>קנס 15</u> אם P/E שלילי <u>או חסר</u> (חברה לא רווחית/בלי נתון). <u>קנס 10</u> אם אין אומדן צמיחה ל-5 שנים. <u>קנס 10 נוסף</u> אם יש ⚡ מחלוקת מודלים. תוספת/הפחתה קטנה (&times;0.05) לפי פער ה-Forward P/E. סימן ⚠ ליד הניקוד מעיד שחלק מהנתונים חסרים ושהציון לא באמת מבוסס על תמונה מלאה — עברו עם העכבר על הסימן לראות אילו שדות חסרים.<br>
+  • <b>ניקוד</b> — נוסחה שבניתי, לא סטנדרט מקצועי: אפסייד ממוצע(%) + (צמיחה-5Y &times; 0.3) + בונוס 5 אם 0&lt;P/E&lt;40. <u>קנס 15</u> אם P/E שלילי <u>או חסר</u> (חברה לא רווחית/בלי נתון). <u>קנס 10</u> אם אין אומדן צמיחה ל-5 שנים. <u>קנס 10 נוסף</u> אם יש ⚡ מחלוקת מודלים. תוספת/הפחתה קטנה (&times;0.05) לפי פער ה-Forward P/E. סימן ⚠ ליד הניקוד מעיד שחלק מהנתונים חסרים ושהציון לא באמת מבוסס על תמונה מלאה — השדות החסרים מוצגים ישירות מתחת לניקוד.<br>
   • <b>גרף הכנסות/הוצאות ואופציות</b> (בלחיצה על "📊 פרטים") — הכנסות/הוצאות היסטוריות מגיעות מ-stockanalysis.com (לא מפינויז), ונתוני האופציות (Put/Call OI ו-Volume) מ-Yahoo Finance, רק לתאריך הפקיעה הקרוב ביותר. שני המקורות האלה חיצוניים לפינויז וייתכן שישברו אם המבנה שלהם משתנה - יש לינק למקור בכל פאנל לאימות ידני.<br>
   • <b>נתוני SEC</b> (בלחיצה על "📄 נתוני SEC") — הכנסות/הוצאות תפעול/רווח נקי, 8 תקופות אחרונות, ישירות מ-SEC EDGAR (מקור ממשלתי רשמי, לא scraping של אתר צד ג') + לינק לדוח המקורי (10-K/10-Q). זה חינמי ולא דורש שום הגדרה.<br>
   הנתונים תלויים בזמינות ובדיוק Finviz וייתכנו שדות חסרים למניות מסוימות. רשימת המעקב נשמרת במאגר משותף בשרת (לא רק בדפדפן) ומתעדכנת אוטומטית פעם ביום.
@@ -216,7 +227,10 @@ const refreshTopBtn = document.getElementById('refreshTopBtn');
 const statusEl = document.getElementById('status');
 const errorsEl = document.getElementById('errors');
 const tbody = document.getElementById('resultsBody');
-let lastResults = [];
+const filterInput = document.getElementById('filterInput');
+const filterCountEl = document.getElementById('filterCount');
+let lastResults = []; // הרשימה המוצגת כרגע (אחרי סינון/מיון)
+let allResults = []; // כל הנתונים שנטענו, לפני סינון - applyFilter() מסנן מתוכה ל-lastResults
 
 // ---------- watchlist persistence (מאגר משותף בשרת - Postgres, ראו api/hype.js) ----------
 // עברה מ-localStorage בדפדפן למאגר משותף כדי שרענון יומי אוטומטי בצד שרת
@@ -270,18 +284,28 @@ addBtn.addEventListener('click', async () => {
   const toAdd = newTickers.filter((t) => !watchlist.includes(t));
   toAdd.forEach((t) => watchlist.push(t));
   renderWatchlist();
+  const addErrors = [];
   for (const t of toAdd) {
     try {
-      await fetch('/api/hype?action=watchlist', {
+      const resp = await fetch('/api/hype?action=watchlist', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbol: t })
       });
+      const data = await resp.json();
+      // הטיקר עדיין נוסף לרשימה גם אם הרענון המיידי נכשל (ינסה שוב ברענון היומי) -
+      // אבל מציגים את השגיאה כדי שתדע אם זה טיקר שגוי/לא קיים, לא רק "לא רואה נתונים".
+      if (data.fetchError) addErrors.push(`${t}: ${data.fetchError}`);
     } catch (err) {
-      errorsEl.textContent = 'שגיאה בהוספת ' + t + ': ' + err.message;
+      addErrors.push(`${t}: ${err.message}`);
     }
   }
-  // רענון חי מיידי לרשימה המעודכנת, כדי לראות נתונים על הטיקרים החדשים בלי לחכות
-  if (toAdd.length) analyze();
+  // רענון חי מיידי לרשימה המעודכנת, כדי לראות נתונים על הטיקרים החדשים בלי לחכות -
+  // מחכים לו לפני שמציגים את שגיאות ההוספה, כי analyze() מנקה את שורת השגיאות בהתחלה שלו.
+  if (toAdd.length) await analyze();
+  if (addErrors.length) {
+    const prefix = errorsEl.textContent ? errorsEl.textContent + ' | ' : '';
+    errorsEl.textContent = prefix + 'נוסף לרשימה אבל נכשל בטעינת נתונים כרגע (ינסה שוב ברענון היומי) - ' + addErrors.join(' · ');
+  }
 });
 
 tickerInput.addEventListener('keydown', (e) => {
@@ -366,7 +390,7 @@ function render(results) {
       <td class="${pctClass(r.avgUpsidePct)}">${fmt(r.avgUpsidePct, 1)}%</td>
       <td>${fmt(r.forecastPrice1Y)} <span class="${pctClass(forecastChangePct)}">(${fmt(forecastChangePct,1)}%)</span></td>
       <td class="${earningsClass}">${r.earningsDate || '-'}</td>
-      <td class="score-cell ${pctClass(r.score)}">${fmt(r.score, 1)}${r.dataComplete ? '' : ` <span title="נתונים חסרים: ${(r.missingFields||[]).join(', ')}" style="color:var(--yellow);cursor:help">⚠</span>`}</td>
+      <td class="score-cell ${pctClass(r.score)}">${fmt(r.score, 1)}${r.dataComplete ? '' : `<span class="score-missing">⚠ חסר: ${(r.missingFields||[]).join(', ')}</span>`}</td>
       <td><span class="news-toggle" data-ticker="${r.ticker}">הצג</span></td>
       <td><span class="details-toggle" data-ticker="${r.ticker}">📊 פרטים</span></td>
       <td><span class="report-toggle" data-ticker="${r.ticker}">📄 נתוני SEC</span></td>
@@ -573,6 +597,23 @@ async function loadDetails(ticker, row) {
   }
 }
 
+// ---------- סינון טבלה (מקומי, לא פונה לשרת - allResults כבר נטען) ----------
+
+function applyFilter() {
+  const q = filterInput.value.trim().toLowerCase();
+  lastResults = !q
+    ? allResults.slice()
+    : allResults.filter((r) =>
+        (r.ticker || '').toLowerCase().includes(q) || (r.companyName || '').toLowerCase().includes(q)
+      );
+  render(lastResults);
+  filterCountEl.textContent = allResults.length
+    ? (q ? `מציג ${lastResults.length} מתוך ${allResults.length}` : '')
+    : '';
+}
+
+filterInput.addEventListener('input', applyFilter);
+
 document.querySelectorAll('th[data-key]').forEach((th) => {
   th.addEventListener('click', () => {
     const key = th.dataset.key;
@@ -607,9 +648,9 @@ async function analyze() {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || 'שגיאה בשרת');
 
-    lastResults = data.results || [];
-    render(lastResults);
-    statusEl.textContent = `הוצגו ${lastResults.length} מניות`;
+    allResults = data.results || [];
+    applyFilter();
+    statusEl.textContent = `הוצגו ${allResults.length} מניות`;
 
     if (data.errors && data.errors.length) {
       errorsEl.textContent = 'שגיאות: ' + data.errors.map((e) => `${e.ticker} (${e.error})`).join(', ');
@@ -634,16 +675,16 @@ async function loadCachedSnapshot() {
     const data = await resp.json();
     const rows = (data.watchlist || []).filter((w) => w.data);
     if (!rows.length) return;
-    lastResults = rows.map((w) => w.data);
-    render(lastResults);
+    allResults = rows.map((w) => w.data);
+    applyFilter();
     const fetchedAt = rows
       .map((w) => w.fetched_at)
       .filter(Boolean)
       .sort()
       .pop();
     statusEl.textContent = fetchedAt
-      ? `הוצגו ${lastResults.length} מניות (נתונים שמורים, עודכנו ${new Date(fetchedAt).toLocaleString('he-IL')}) - לחצו "רענן" לנתונים חיים`
-      : `הוצגו ${lastResults.length} מניות (נתונים שמורים)`;
+      ? `הוצגו ${allResults.length} מניות (נתונים שמורים, עודכנו ${new Date(fetchedAt).toLocaleString('he-IL')}) - לחצו "רענן" לנתונים חיים`
+      : `הוצגו ${allResults.length} מניות (נתונים שמורים)`;
   } catch (err) {
     // כישלון בטעינת הנתונים השמורים לא אמור למנוע מהמשתמש להשתמש בכפתור "רענן" הרגיל.
   }
