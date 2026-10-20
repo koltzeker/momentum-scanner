@@ -268,20 +268,28 @@ async function loadWatchlist() {
 
 function renderWatchlist() {
   watchlistEl.innerHTML = '';
-  if (!watchlist.length) {
+  // מניות FTMO לא מוצגות כצ'יפים כאן בכלל (רון ביקש שלא יתפסו מקום ברשימת ה"הוספה/הסרה"
+  // הזו, כי ממילא אי אפשר ואין טעם להסיר אותן) - אבל הן עדיין ב-watchlist בפועל, ולכן
+  // עדיין נכללות תמיד ב-analyze()/ברענון היומי ומוצגות בטבלת הניתוח למטה עם תג FTMO.
+  const manageable = watchlist.filter((t) => !FTMO_SYMBOLS.has(t));
+  const ftmoCount = watchlist.length - manageable.length;
+  if (!manageable.length) {
     watchlistEl.innerHTML = '<span class="empty-watchlist">הרשימה ריקה - הוסיפו טיקר למעלה</span>';
-    return;
+  } else {
+    manageable.forEach((t) => {
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      chip.innerHTML = `${t} <span class="remove" data-ticker="${t}">✕</span>`;
+      watchlistEl.appendChild(chip);
+    });
   }
-  watchlist.forEach((t) => {
-    const isFtmo = FTMO_SYMBOLS.has(t);
-    const chip = document.createElement('div');
-    chip.className = 'chip' + (isFtmo ? ' ftmo-chip' : '');
-    // מניית FTMO קבועה ברשימה - בלי כפתור הסרה, כדי שתמיד תישאר (כמו שרון ביקש).
-    chip.innerHTML = isFtmo
-      ? `<span class="ftmo-badge" title="ניתן לסחור ב-FTMO - קבועה ברשימה">FTMO</span>${t}`
-      : `${t} <span class="remove" data-ticker="${t}">✕</span>`;
-    watchlistEl.appendChild(chip);
-  });
+  if (ftmoCount) {
+    const note = document.createElement('span');
+    note.className = 'empty-watchlist';
+    note.style.alignSelf = 'center';
+    note.textContent = `+ ${ftmoCount} מניות FTMO (תמיד נכללות בניתוח למטה, לא מוצגות כאן)`;
+    watchlistEl.appendChild(note);
+  }
 }
 
 watchlistEl.addEventListener('click', async (e) => {
