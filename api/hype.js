@@ -38,15 +38,18 @@ module.exports = async (req, res) => {
         }
         await db.addToHypeWatchlist(symbol);
         // רענון מיידי כדי שלא יצטרך לחכות לרענון היומי כדי לראות נתונים על הטיקר החדש.
+        // הטיקר תמיד נשאר ברשימה גם אם זה נכשל (למשל Finviz חסום כרגע) - פשוט יקבל
+        // נתונים ברענון היומי הבא - אבל מחזירים את השגיאה כדי שהפרונט יוכל להציג אותה,
+        // כי לפעמים הכישלון הוא קבוע (טיקר שגוי/לא קיים בפינויז) ולא זמני.
+        let fetchError = null;
         try {
           const parsed = await fetchFinvizQuote(symbol);
           const analysis = buildAnalysis(symbol, parsed);
           await db.saveHypeSnapshot(symbol, analysis);
         } catch (err) {
-          // אם הרענון המיידי נכשל (למשל Finviz חסום כרגע) - הטיקר עדיין נוסף לרשימה,
-          // ופשוט יקבל נתונים ברענון היומי הבא.
+          fetchError = err.message;
         }
-        res.status(200).json({ ok: true });
+        res.status(200).json({ ok: true, fetchError });
         return;
       }
       if (req.method === 'DELETE') {
