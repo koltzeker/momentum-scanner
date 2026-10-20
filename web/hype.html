@@ -17,6 +17,7 @@
     --red: #ff5c5c;
     --accent: #4f8cff;
     --yellow: #f5c542;
+    --blue: #38b6ff;
   }
   * { box-sizing: border-box; }
   body {
@@ -90,6 +91,12 @@
   }
   .chip .remove:hover { background: rgba(255,92,92,0.15); }
   .empty-watchlist { color: var(--muted); font-size: 13px; }
+  /* מניות שניתן לסחור בהן ב-FTMO - אותו סימון כמו במומנטום יומי (web/index.html),
+     קבועות ברשימה (לא ניתנות להסרה) כדי שתמיד יופיעו - ראו FTMO_SYMBOLS למטה. */
+  .ftmo-badge { display: inline-block; margin-left: 6px; font-size: 9px; font-weight: 700; color: var(--blue); border: 1px solid var(--blue); border-radius: 4px; padding: 1px 4px; vertical-align: middle; }
+  .chip.ftmo-chip { background: rgba(56,182,255,0.14); border-color: var(--blue); }
+  tr.ftmo-row td { background: rgba(56,182,255,0.14); }
+  tr.ftmo-row:hover td { background: rgba(56,182,255,0.22); }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { padding: 6px 9px; text-align: center; border-bottom: 1px solid var(--border); white-space: nowrap; }
@@ -232,6 +239,16 @@ const filterCountEl = document.getElementById('filterCount');
 let lastResults = []; // הרשימה המוצגת כרגע (אחרי סינון/מיון)
 let allResults = []; // כל הנתונים שנטענו, לפני סינון - applyFilter() מסנן מתוכה ל-lastResults
 
+// מניות שניתן לסחור בהן ב-FTMO - אותה רשימה בדיוק כמו ב-web/index.html (נבדקה ידנית
+// מול קטגוריית ה-Equities CFD של FTMO ב-24.9.2026). אם הרשימה אצל FTMO משתנה צריך
+// לעדכן גם כאן וגם שם - אין מקור משותף אחד כי כל עמוד HTML כאן עצמאי.
+const FTMO_SYMBOLS = new Set([
+  'AAPL','AMZN','BA','BABA','BAC','CSCO','CVX','DIS','META','FDX','GE','GM','GOOG',
+  'IBM','INTC','JNJ','JPM','KO','MCD','MSFT','NFLX','NVDA','PFE','QCOM','RACE','T',
+  'TSLA','V','WMT','XOM','ZM','RTX','LMT','PLTR','AMD','AVGO','SBUX','MSTR','GME',
+  'NKE','ARM','SNOW','ASML','BRK.B','BRK-B',
+]);
+
 // ---------- watchlist persistence (מאגר משותף בשרת - Postgres, ראו api/hype.js) ----------
 // עברה מ-localStorage בדפדפן למאגר משותף כדי שרענון יומי אוטומטי בצד שרת
 // (scanner/hypeRefresh.js) יעדכן את הנתונים גם כשהדפדפן סגור.
@@ -256,9 +273,13 @@ function renderWatchlist() {
     return;
   }
   watchlist.forEach((t) => {
+    const isFtmo = FTMO_SYMBOLS.has(t);
     const chip = document.createElement('div');
-    chip.className = 'chip';
-    chip.innerHTML = `${t} <span class="remove" data-ticker="${t}">✕</span>`;
+    chip.className = 'chip' + (isFtmo ? ' ftmo-chip' : '');
+    // מניית FTMO קבועה ברשימה - בלי כפתור הסרה, כדי שתמיד תישאר (כמו שרון ביקש).
+    chip.innerHTML = isFtmo
+      ? `<span class="ftmo-badge" title="ניתן לסחור ב-FTMO - קבועה ברשימה">FTMO</span>${t}`
+      : `${t} <span class="remove" data-ticker="${t}">✕</span>`;
     watchlistEl.appendChild(chip);
   });
 }
@@ -369,11 +390,13 @@ function renderNewsRow(ticker, news) {
 function render(results) {
   tbody.innerHTML = '';
   results.forEach((r) => {
+    const isFtmo = FTMO_SYMBOLS.has(r.ticker);
     const tr = document.createElement('tr');
+    if (isFtmo) tr.className = 'ftmo-row';
     const forecastChangePct = r.price && r.forecastPrice1Y ? ((r.forecastPrice1Y - r.price) / r.price) * 100 : null;
     const earningsClass = classifyEarnings(r.earningsDate);
     tr.innerHTML = `
-      <td class="ticker">${r.ticker}<br><span style="color:var(--muted);font-weight:400;font-size:11px">${r.companyName || ''}</span></td>
+      <td class="ticker">${isFtmo ? '<span class="ftmo-badge" title="ניתן לסחור ב-FTMO">FTMO</span>' : ''}${r.ticker}<br><span style="color:var(--muted);font-weight:400;font-size:11px">${r.companyName || ''}</span></td>
       <td>${fmt(r.price)}</td>
       <td>${fmt(r.peTTM)}</td>
       <td>${fmt(r.forwardPE)}</td>
